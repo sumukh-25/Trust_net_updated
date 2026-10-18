@@ -37,3 +37,5 @@ __pycache__/
 *.njsproj
 *.sln
 *.sw?
+
+backend/final_backend_output.txt
