@@ -282,30 +282,35 @@ const AdminPanel = () => {
   };
 
   return (
-    <div className="p-4 lg:p-6 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1750px] mx-auto bg-[#050810] min-h-screen text-[#F0F5FC]">
       {/* Consistent SOC Command-Centre Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#27364B] pb-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-primary/20 border border-primary/40 flex items-center justify-center text-primary shadow-sm shadow-primary/20">
-              <Settings className="w-4 h-4" />
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-[#31E6F7]/10 border border-[#31E6F7]/30 flex items-center justify-center text-[#31E6F7] shadow-sm shadow-[#31E6F7]/10">
+              <Settings className="w-5 h-5" />
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-              SOC Administration &amp; Governance
-            </h1>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#F0F5FC] flex items-center gap-2">
+                SOC Administration &amp; Governance
+                <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded border border-[#31E6F7]/30 bg-[#31E6F7]/10 text-[#31E6F7]">
+                  POLICY HUB
+                </span>
+              </h1>
+              <p className="text-xs text-[#A3B3C9]">
+                Zero-Trust risk policies, lateral restriction thresholds, RBAC identities, and append-only audit integrity
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            TrustNet risk policies, access restrictions, RBAC identities, and append-only audit integrity
-          </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="px-2.5 py-1 rounded-full text-[11px] font-mono border bg-emerald-500/10 text-emerald-400 border-emerald-500/30 flex items-center gap-1.5 font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        <div className="flex items-center gap-2.5">
+          <span className="px-3 py-1.5 rounded-lg text-[11px] font-mono border bg-[#46E6A5]/10 text-[#46E6A5] border-[#46E6A5]/30 flex items-center gap-2 font-medium">
+            <span className="w-2 h-2 rounded-full bg-[#46E6A5] animate-pulse" />
             GOVERNANCE ACTIVE
           </span>
-          <span className="px-2.5 py-1 rounded-full text-[11px] font-mono border bg-card text-muted-foreground border-border/60">
-            RBAC LEVEL: ADMIN
+          <span className="px-3 py-1.5 rounded-lg text-[11px] font-mono border bg-[#131F31] text-[#A3B3C9] border-[#27364B]">
+            RBAC: LEVEL 3 (ADMIN)
           </span>
         </div>
       </div>

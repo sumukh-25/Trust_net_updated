@@ -118,24 +118,24 @@ export default function AgentPanel({ incidentId, canAct, onChanged }: AgentPanel
   const isSuspicious = investigation?.verdict === "suspicious";
 
   return (
-    <div className="rounded-xl border border-primary/30 bg-gradient-to-b from-card/90 to-card/50 backdrop-blur-md p-4 sm:p-5 shadow-lg shadow-black/40 space-y-4 relative overflow-hidden">
+    <div className="rounded-xl border border-[#B4A0FF]/30 bg-gradient-to-b from-[#172238]/95 to-[#111A2E]/90 backdrop-blur-md p-4 sm:p-5 shadow-2xl space-y-4 relative overflow-hidden">
       {/* Top Ambient Glow Line */}
-      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
+      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[#B4A0FF]/80 to-transparent" />
 
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#29364D] pb-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-primary/15 border border-primary/40 flex items-center justify-center text-primary shadow-sm shadow-primary/20">
+          <div className="w-8 h-8 rounded-lg bg-[#B4A0FF]/15 border border-[#B4A0FF]/40 flex items-center justify-center text-[#B4A0FF] shadow-sm">
             <Brain className="w-4 h-4 animate-pulse" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-sm tracking-wide text-foreground">AI GUARDIAN CO-PILOT</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 font-semibold">
+              <span className="font-bold text-sm tracking-wide text-[#F1F5F9]">AI GUARDIAN CO-PILOT</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#B4A0FF]/15 text-[#B4A0FF] border border-[#B4A0FF]/30 font-semibold">
                 AGENTIC SOC
               </span>
             </div>
-            <div className="text-[11px] text-muted-foreground font-mono flex items-center gap-1.5">
+            <div className="text-[11px] text-[#94A3B8] font-mono flex items-center gap-1.5">
               <span>Read-Only SQLite Investigator</span>
               <span>·</span>
               <span>Enforcement Guardrails</span>

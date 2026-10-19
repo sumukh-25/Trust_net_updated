@@ -7,11 +7,11 @@ import { mlBackendService } from "@/services/mlBackendService";
 const SECTIONS = 6;
 const WAYPOINTS_Z = [9, -7, -18, -29, -40, -52];
 const GATES = [
-  { z: -7, r: 1.5, color: 0xff2b4d, label: 1 },
-  { z: -18, r: 1.6, color: 0xff2b4d, label: 2 },
-  { z: -29, r: 1.7, color: 0xffb020, label: 3 },
-  { z: -40, r: 1.85, color: 0xff2b4d, label: 4, converge: true },
-  { z: -52, r: 2.1, color: 0xe9ecf5, label: 5, console: true },
+  { z: -7, r: 1.5, color: 0x31E6F7, label: 1 },
+  { z: -18, r: 1.6, color: 0x4DA3FF, label: 2 },
+  { z: -29, r: 1.7, color: 0xFFBD59, label: 3 },
+  { z: -40, r: 1.85, color: 0xFF304F, label: 4, converge: true },
+  { z: -52, r: 2.1, color: 0x46E6A5, label: 5, console: true },
 ];
 
 function lerp(a: number, b: number, t: number) {
@@ -41,7 +41,7 @@ export default function LoginPage3D() {
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x050507, 0.038);
+    scene.fog = new THREE.FogExp2(0x050810, 0.038);
     const camera = new THREE.PerspectiveCamera(50, mount.clientWidth / Math.max(mount.clientHeight, 1), 0.1, 120);
     camera.position.set(0, 0, 9);
 
@@ -66,7 +66,7 @@ export default function LoginPage3D() {
       starPos[i * 3 + 2] = Math.random() * -60 + 10;
     }
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
-    const starMat = new THREE.PointsMaterial({ color: 0x4a2c33, size: 0.035, transparent: true, opacity: 0.55 });
+    const starMat = new THREE.PointsMaterial({ color: 0x27364B, size: 0.035, transparent: true, opacity: 0.65 });
     const stars = new THREE.Points(starGeo, starMat);
     scene.add(stars);
 
@@ -84,10 +84,10 @@ export default function LoginPage3D() {
     }
     streamGeo.setAttribute("position", new THREE.BufferAttribute(streamPos, 3));
     const streamMat = new THREE.PointsMaterial({
-      color: 0xff5470,
+      color: 0x31E6F7,
       size: 0.05,
       transparent: true,
-      opacity: 0.75,
+      opacity: 0.8,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });

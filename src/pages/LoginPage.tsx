@@ -1,7 +1,14 @@
+/**
+ * LoginPage — STEP 1 glass redesign
+ * Auth logic preserved exactly. Visual-only rewrite.
+ */
 import React, { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Shield, ArrowRight, Loader2, AlertCircle, Lock, User } from "lucide-react";
 import { collectFingerprint, getFingerprintId } from "@/services/fingerprintService";
 import { mlBackendService } from "@/services/mlBackendService";
+import { DotGridBackground } from "@/components/ui/DotGridBackground";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -9,43 +16,19 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [authenticating, setAuthenticating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [wrapPos, setWrapPos] = useState({ px: 0, py: 0 });
-  const [tilt, setTilt] = useState({ rx: 0, ry: 0 });
-
-  const handleWrapMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setWrapPos({
-      px: (e.clientX - rect.left) / rect.width - 0.5,
-      py: (e.clientY - rect.top) / rect.height - 0.5,
-    });
-  }, []);
-
-  const handleWrapLeave = useCallback(() => setWrapPos({ px: 0, py: 0 }), []);
-
-  const handleCardMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const px = (e.clientX - rect.left) / rect.width - 0.5;
-    const py = (e.clientY - rect.top) / rect.height - 0.5;
-    setTilt({ rx: py * -10, ry: px * 14 });
-  }, []);
-
-  const handleCardLeave = useCallback(() => setTilt({ rx: 0, ry: 0 }), []);
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     setAuthenticating(true);
-
     try {
-      const fingerprint = collectFingerprint();
+      const fingerprint   = collectFingerprint();
       const fingerprintId = getFingerprintId(fingerprint);
       const result = await mlBackendService.login(username.trim(), password, fingerprint, fingerprintId);
-
       if (result.login_status !== "allowed") {
         setError(result.message || "Access denied. This device could not be verified.");
         return;
       }
-
       navigate("/overview");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed. Check the ML backend and try again.");
@@ -55,168 +38,259 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="login-wrap" onMouseMove={handleWrapMove} onMouseLeave={handleWrapLeave}>
-      <section className="brand-side bg-grid">
-        <div
-          className="orb"
-          style={{
-            width: 380,
-            height: 380,
-            background: "#ff2b4d",
-            top: -120,
-            right: -100,
-            transform: `translate(${wrapPos.px * 26}px, ${wrapPos.py * 26}px)`,
-          }}
-        />
-        <div
-          className="orb"
-          style={{
-            width: 260,
-            height: 260,
-            background: "#ff2b4d",
-            bottom: -80,
-            left: "40%",
-            transform: `translate(${wrapPos.px * -18}px, ${wrapPos.py * -18}px)`,
-          }}
-        />
+    <div
+      className="min-h-screen flex items-center justify-center relative overflow-hidden"
+      style={{ background: '#070b12' }}
+    >
+      <DotGridBackground />
 
-        <div className="particle p-float-a" style={{ width: 6, height: 6, top: "18%", left: "62%" }} />
-        <div className="particle p-float-b" style={{ width: 4, height: 4, top: "34%", left: "74%" }} />
-        <div className="particle p-float-c" style={{ width: 3, height: 3, top: "58%", left: "50%" }} />
-        <div className="particle p-float-a" style={{ width: 5, height: 5, top: "70%", left: "68%", animationDelay: "1.2s" }} />
-        <div className="particle p-float-b" style={{ width: 4, height: 4, top: "12%", left: "30%", animationDelay: "0.6s" }} />
+      <div className="relative z-10 w-full max-w-6xl mx-auto px-4 flex flex-col lg:flex-row items-center gap-12 lg:gap-20 py-16">
 
-        <div className="floor" />
-        <div className="horizon-glow" />
-
-        <div className="brand-content">
-          <div className="brand-mark-row">
-            <div className="brand-mark glow-ring" aria-hidden="true">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z" />
-              </svg>
+        {/* ── Left: Brand ─────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, x: -24 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+          className="flex-1 text-center lg:text-left"
+        >
+          {/* Logo */}
+          <div className="flex items-center justify-center lg:justify-start gap-3 mb-8">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center"
+              style={{
+                background: 'rgba(56,189,248,0.12)',
+                border: '1px solid rgba(56,189,248,0.30)',
+                boxShadow: '0 0 24px rgba(56,189,248,0.15)',
+              }}
+            >
+              <Shield className="w-6 h-6" style={{ color: '#38bdf8' }} />
             </div>
-            <div className="heading brand-name">TRUSTNET&nbsp;AI</div>
-          </div>
-
-          <div className="brand-copy">
-            <div className="badge badge-critical brand-badge">
-              <span className="dot pulse" style={{ background: "#ff2b4d" }} />
-              AGENTIC SOC — LIVE
-            </div>
-            <h1 className="heading glow-text brand-title">
-              Autonomous security,
-              <br />
-              for restricted assets.
-            </h1>
-            <p className="brand-description">
-              Behavioral anomaly detection, physical-layer device verification and tiered autonomous response —
-              reasoning over live signals, not guesses.
-            </p>
-          </div>
-        </div>
-
-        <div className="brand-features">
-          <div className="feature-chip">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff5470" strokeWidth={2} aria-hidden="true">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.3-4.3" />
-            </svg>
-            <span>Autonomous Incident Investigator Agent</span>
-          </div>
-          <div className="feature-chip">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff5470" strokeWidth={2} aria-hidden="true">
-              <path d="M13 2L3 14h7l-1 8 11-14h-7l1-6z" />
-            </svg>
-            <span>Tiered Autonomous Response Agent</span>
-          </div>
-          <div className="feature-chip">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff5470" strokeWidth={2} aria-hidden="true">
-              <rect x="3" y="11" width="18" height="10" rx="2" />
-              <path d="M7 11V7a5 5 0 0110 0v4" />
-            </svg>
-            <span>Browser/device fingerprint checks · CSI hardware planned</span>
-          </div>
-        </div>
-      </section>
-
-      <section className="form-side">
-        <div className="tilt-stage">
-          <div
-            className="login-card panel panel-glow"
-            style={{ transform: `rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg)` }}
-            onMouseMove={handleCardMove}
-            onMouseLeave={handleCardLeave}
-          >
-            <div className="card-inner">
-              <div className="login-card-heading">
-                <div>
-                  <div className="heading login-card-title">Secure Access</div>
-                  <div className="login-card-subtitle">Sign in to the TrustNet AI command console</div>
-                </div>
-                <span className="status-ring" aria-label="Secure channel online" />
+            <div>
+              <div className="font-bold text-xl tracking-tight" style={{ color: '#f1f5f9' }}>
+                TrustNet AI
               </div>
+              <div className="text-xs font-mono font-semibold tracking-widest" style={{ color: '#a78bfa' }}>
+                AI GUARDIAN
+              </div>
+            </div>
+          </div>
 
-              <form onSubmit={handleSignIn}>
-                <div className="tn-field">
-                  <label htmlFor="operator-username">Operator username</label>
+          {/* Headline */}
+          <div
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-semibold mb-5"
+            style={{
+              background: 'rgba(34,197,94,0.10)',
+              border: '1px solid rgba(34,197,94,0.25)',
+              color: '#22c55e',
+            }}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse" />
+            AGENTIC SOC · LIVE
+          </div>
+
+          <h1
+            className="text-3xl lg:text-4xl font-bold tracking-tight mb-4 leading-tight"
+            style={{ color: '#f1f5f9' }}
+          >
+            Autonomous security,
+            <br />
+            <span style={{ color: '#38bdf8' }}>for restricted assets.</span>
+          </h1>
+
+          <p className="text-sm leading-relaxed max-w-md mx-auto lg:mx-0" style={{ color: '#94a3b8' }}>
+            Behavioral anomaly detection, device fingerprint verification and tiered
+            autonomous response — reasoning over live signals, not guesses.
+          </p>
+
+          {/* Feature chips */}
+          <div className="flex flex-col gap-2.5 mt-8">
+            {[
+              { icon: '🔍', label: 'Autonomous Incident Investigator Agent' },
+              { icon: '⚡', label: 'Tiered Autonomous Response Agent' },
+              { icon: '🔒', label: 'Browser / device fingerprint verification' },
+            ].map(f => (
+              <div
+                key={f.label}
+                className="flex items-center gap-3 text-sm"
+                style={{ color: '#94a3b8' }}
+              >
+                <span
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
+                  style={{ background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.15)' }}
+                >
+                  {f.icon}
+                </span>
+                {f.label}
+              </div>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* ── Right: Login card ────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1, ease: [0.4, 0, 0.2, 1] }}
+          className="w-full max-w-md flex-shrink-0"
+        >
+          <div
+            className="p-8 rounded-2xl"
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(24px)',
+              border: '1px solid rgba(255,255,255,0.10)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 24px 64px rgba(0,0,0,0.5)',
+            }}
+          >
+            {/* Card header */}
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-lg font-bold" style={{ color: '#f1f5f9' }}>Secure Access</h2>
+                <p className="text-sm mt-0.5" style={{ color: '#94a3b8' }}>
+                  Sign in to the TrustNet AI console
+                </p>
+              </div>
+              <div
+                className="w-2.5 h-2.5 rounded-full"
+                style={{ background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}
+                title="Secure channel online"
+              />
+            </div>
+
+            <form onSubmit={handleSignIn} className="space-y-4">
+              {/* Username */}
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="operator-username"
+                  className="text-xs font-medium font-mono tracking-wide"
+                  style={{ color: '#94a3b8' }}
+                >
+                  OPERATOR USERNAME
+                </label>
+                <div className="relative">
+                  <User
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                    style={{ color: '#475569' }}
+                  />
                   <input
                     id="operator-username"
                     type="text"
                     autoComplete="username"
                     placeholder="sumukh / alex_chen / admin"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    onChange={e => setUsername(e.target.value)}
                     required
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none transition-all duration-200"
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.10)',
+                      color: '#f1f5f9',
+                      fontFamily: 'Inter, sans-serif',
+                    }}
+                    onFocus={e => { e.currentTarget.style.borderColor = 'rgba(56,189,248,0.50)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(56,189,248,0.10)'; }}
+                    onBlur={e  => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.10)'; e.currentTarget.style.boxShadow = 'none'; }}
                   />
                 </div>
-                <div className="tn-field">
-                  <label htmlFor="operator-password">Password</label>
+              </div>
+
+              {/* Password */}
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="operator-password"
+                  className="text-xs font-medium font-mono tracking-wide"
+                  style={{ color: '#94a3b8' }}
+                >
+                  PASSWORD
+                </label>
+                <div className="relative">
+                  <Lock
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                    style={{ color: '#475569' }}
+                  />
                   <input
                     id="operator-password"
                     type="password"
                     autoComplete="current-password"
                     placeholder="Enter your password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={e => setPassword(e.target.value)}
                     required
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none transition-all duration-200"
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.10)',
+                      color: '#f1f5f9',
+                      fontFamily: 'Inter, sans-serif',
+                    }}
+                    onFocus={e => { e.currentTarget.style.borderColor = 'rgba(56,189,248,0.50)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(56,189,248,0.10)'; }}
+                    onBlur={e  => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.10)'; e.currentTarget.style.boxShadow = 'none'; }}
                   />
                 </div>
-
-                <div className="login-options">
-                  <label className="remember-node">
-                    <input type="checkbox" defaultChecked /> Remember this node
-                  </label>
-                  <a href="mailto:security@trustnet.ai?subject=TrustNet%20access%20recovery">Forgot access?</a>
-                </div>
-
-                {error && <div className="login-error" role="alert">{error}</div>}
-
-                <button type="submit" className="btn btn-primary sign-in-btn" disabled={authenticating}>
-                  {authenticating ? (
-                    <span>Verifying device…</span>
-                  ) : (
-                    <span className="sign-in-label">
-                      Authenticate &amp; Enter Console
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-hidden="true">
-                        <path d="M5 12h14M13 6l6 6-6 6" />
-                      </svg>
-                    </span>
-                  )}
-                </button>
-              </form>
-
-              <div className="mfa-note">DEVICE FINGERPRINT · BASELINE AUTH</div>
-              <div className="hr login-divider" />
-              <div className="sysline">
-                <span>NODE-07 · IN-MEMORY</span>
-                <span className="secure-channel">● SECURE CHANNEL</span>
               </div>
-              <p className="login-hint">{import.meta.env.DEV ? "Local demo account: sumukh / sumukh@123 (development builds only). " : ""}First successful sign-in saves this device as your baseline.</p>
+
+              {/* Error */}
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-start gap-2.5 p-3 rounded-xl text-sm"
+                  style={{
+                    background: 'rgba(239,68,68,0.10)',
+                    border: '1px solid rgba(239,68,68,0.25)',
+                    color: '#ef4444',
+                  }}
+                  role="alert"
+                >
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  {error}
+                </motion.div>
+              )}
+
+              {/* Submit */}
+              <motion.button
+                type="submit"
+                disabled={authenticating}
+                whileHover={{ scale: authenticating ? 1 : 1.01 }}
+                whileTap={{ scale: authenticating ? 1 : 0.98 }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold transition-all duration-200 mt-2 disabled:opacity-60"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(56,189,248,0.80), rgba(56,189,248,0.60))',
+                  border: '1px solid rgba(56,189,248,0.40)',
+                  color: '#0c1220',
+                  boxShadow: '0 0 20px rgba(56,189,248,0.20)',
+                }}
+              >
+                {authenticating
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying device…</>
+                  : <>Authenticate &amp; Enter Console <ArrowRight className="w-4 h-4" /></>
+                }
+              </motion.button>
+            </form>
+
+            {/* Footer note */}
+            <div className="mt-5 pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono" style={{ color: '#475569' }}>
+                  DEVICE FINGERPRINT · BASELINE AUTH
+                </span>
+                <span
+                  className="text-[10px] font-mono flex items-center gap-1"
+                  style={{ color: '#22c55e' }}
+                >
+                  <span className="w-1 h-1 rounded-full bg-[#22c55e]" />
+                  SECURE CHANNEL
+                </span>
+              </div>
+              {import.meta.env.DEV && (
+                <p className="text-[11px] mt-2" style={{ color: '#475569' }}>
+                  Dev: <span className="font-mono" style={{ color: '#94a3b8' }}>sumukh / sumukh@123</span>
+                  {' '}· First sign-in saves device baseline.
+                </p>
+              )}
             </div>
           </div>
-        </div>
-      </section>
+        </motion.div>
+      </div>
     </div>
   );
 }

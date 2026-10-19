@@ -10,6 +10,19 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    proxy: {
+      // Proxy all /api requests to the FastAPI backend → no CORS issues
+      "/api": {
+        target: "http://127.0.0.1:8010",
+        changeOrigin: true,
+        secure: false,
+      },
+      "/ws": {
+        target: "ws://127.0.0.1:8010",
+        ws: true,
+        changeOrigin: true,
+      },
+    },
   },
   plugins: [react()].filter(Boolean),
   resolve: {

@@ -331,7 +331,7 @@ app = FastAPI(
 )
 
 # CORS: explicit origins only (override with TRUSTNET_CORS_ORIGINS="https://a.example,https://b.example").
-_DEFAULT_CORS_ORIGINS = "http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173,http://127.0.0.1:5173"
+_DEFAULT_CORS_ORIGINS = "http://localhost:8080,http://localhost:8081,http://127.0.0.1:8080,http://127.0.0.1:8081,http://localhost:5173,http://127.0.0.1:5173"
 _CORS_ORIGINS = [o.strip() for o in os.environ.get("TRUSTNET_CORS_ORIGINS", _DEFAULT_CORS_ORIGINS).split(",") if o.strip() and o.strip() != "*"]
 app.add_middleware(
     CORSMiddleware,

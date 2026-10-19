@@ -57,6 +57,21 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        ai: {
+          DEFAULT: "hsl(var(--ai))",
+          foreground: "hsl(var(--ai-foreground))",
+        },
+        cyan: {
+          DEFAULT: "hsl(var(--cyan))",
+          foreground: "hsl(var(--cyan-foreground))",
+        },
+        aqua: {
+          DEFAULT: "hsl(var(--aqua))",
+          foreground: "hsl(var(--aqua-foreground))",
+        },
+        electric: {
+          DEFAULT: "hsl(var(--electric))",
+        },
         threat: {
           critical: "hsl(var(--threat-critical))",
           high: "hsl(var(--threat-high))",
