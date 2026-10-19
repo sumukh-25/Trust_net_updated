@@ -3,12 +3,13 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, LayoutDashboard, Activity, GitBranch, Radio,
-  AlertTriangle, Settings, Zap, ChevronLeft, ChevronRight, Menu, X
+  AlertTriangle, Settings, Zap, ChevronLeft, ChevronRight, Menu, X, Search
 } from 'lucide-react';
 import { useSecurity } from '@/store/securityStore';
 import { useAuth } from '@/store/authContext';
 import { mlBackendService, type WsState } from '@/services/mlBackendService';
 import NotificationBell from '@/components/NotificationBell';
+import CommandPalette from '@/components/CommandPalette';
 
 const navItems = [
   { to: '/overview', icon: LayoutDashboard, label: 'Overview', exact: true },
@@ -33,6 +34,7 @@ interface LayoutProps {
 export const Layout = ({ children }: LayoutProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
   const { systemRiskScore, activeAnomalies, isAttackSimulated, simulateAttack, resetSimulation, isSimulating } = useSecurity();
   const [wsState, setWsState] = useState<WsState>(mlBackendService.getWsState());
   const [lastMessageAt, setLastMessageAt] = useState<number | null>(null);
@@ -209,63 +211,91 @@ export const Layout = ({ children }: LayoutProps) => {
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Top bar */}
         <header
-          className="h-16 flex-shrink-0 flex items-center justify-between px-4 lg:px-6 border-b border-border"
-          style={{ background: 'hsl(220 30% 6% / 0.9)' }}
+          className="h-16 flex-shrink-0 flex items-center justify-between px-4 lg:px-6 border-b border-border/70 backdrop-blur-md"
+          style={{ background: 'hsl(225 18% 4% / 0.95)' }}
         >
           <div className="flex items-center gap-3">
-            <div className="hidden md:block text-right leading-tight">
-              <div className="text-xs font-medium text-foreground">{user?.email}</div>
-              <div className="text-[9px] font-mono uppercase text-muted-foreground">{user?.role}</div>
-            </div>
-            <NotificationBell />
-            <button
-              type="button"
-              onClick={async () => { await mlBackendService.logout(); navigate('/login', { replace: true }); }}
-              className="inline-flex items-center px-2 py-1 rounded border border-border text-[9px] font-mono text-muted-foreground hover:text-foreground"
-            >
-              SIGN OUT
-            </button>
-            <button className="lg:hidden text-muted-foreground" onClick={() => setMobileOpen(true)}>
+            <button className="lg:hidden text-muted-foreground hover:text-foreground p-1" onClick={() => setMobileOpen(true)} aria-label="Toggle Navigation">
               <Menu className="w-5 h-5" />
             </button>
-            <div className="font-mono text-xs text-muted-foreground hidden sm:block">
-              <span className="text-primary">TRUSTNET AI</span>
-              <span className="mx-2 opacity-40">•</span>
-              <span>Cognitive Security Platform v2.4.1</span>
+            <div className="font-mono text-xs flex items-center gap-2">
+              <span className="font-bold text-primary tracking-wider">TRUSTNET AI</span>
+              <span className="opacity-30">•</span>
+              <span className="text-muted-foreground hidden sm:inline">Autonomous SOC Platform</span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-primary/10 text-primary border border-primary/20 hidden md:inline">
+                v2.4.1-LIVE
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3.5">
+            {/* Quick Command Palette Trigger (21st.dev style) */}
+            <button
+              type="button"
+              onClick={() => setCommandOpen(true)}
+              className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-md border border-border/70 bg-secondary/40 text-muted-foreground hover:text-foreground hover:border-border transition-colors text-xs font-mono"
+              title="Open Command Palette (Ctrl+K)"
+            >
+              <Search className="w-3 h-3 text-primary" />
+              <span className="hidden md:inline text-[11px]">Command Palette</span>
+              <kbd className="px-1.5 py-0.2 rounded bg-background/80 border border-border/60 text-[9px] text-muted-foreground font-semibold">
+                ⌘K
+              </kbd>
+            </button>
+
             {/* Live indicator: reflects the real WebSocket state (live / reconnecting with backoff / offline) */}
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-xs border"
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md font-mono text-xs border"
               title={lastMessageAt ? `Last message ${new Date(lastMessageAt).toLocaleTimeString()}` : 'No live message received yet'}
               style={{ background: `${wsBadge.color.replace(')', ' / 0.1)')}`, borderColor: `${wsBadge.color.replace(')', ' / 0.3)')}`, color: wsBadge.color }}
             >
               <div className={`w-1.5 h-1.5 rounded-full ${wsState === 'live' ? 'animate-threat-pulse' : ''}`} style={{ background: wsBadge.color }} />
-              {wsBadge.label}
+              <span className="font-semibold text-[11px]">{wsBadge.label}</span>
             </div>
 
             {/* SIMULATE ATTACK BUTTON */}
-            {hasPermission('approve_incidents') && <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={isAttackSimulated ? resetSimulation : simulateAttack}
-              disabled={isSimulating}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all disabled:opacity-60"
-              style={isAttackSimulated ? {
-                background: 'hsl(150 68% 51% / 0.1)',
-                border: '1px solid hsl(150 68% 51% / 0.4)',
-                color: 'hsl(150 68% 51%)',
-              } : {
-                background: 'hsl(350 100% 59% / 0.2)',
-                border: '1px solid hsl(350 100% 59% / 0.5)',
-                color: 'hsl(350 100% 59%)',
-                boxShadow: '0 0 20px hsl(350 100% 59% / 0.3)',
-              }}
+            {hasPermission('approve_incidents') && (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={isAttackSimulated ? resetSimulation : simulateAttack}
+                disabled={isSimulating}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-md font-mono text-xs font-semibold transition-all disabled:opacity-60"
+                style={isAttackSimulated ? {
+                  background: 'hsl(150 68% 51% / 0.1)',
+                  border: '1px solid hsl(150 68% 51% / 0.4)',
+                  color: 'hsl(150 68% 51%)',
+                } : {
+                  background: 'hsl(350 100% 59% / 0.15)',
+                  border: '1px solid hsl(350 100% 59% / 0.4)',
+                  color: 'hsl(350 100% 59%)',
+                }}
+              >
+                <Zap className={`w-3.5 h-3.5 ${isSimulating ? 'animate-spin' : ''}`} />
+                <span>{isSimulating ? 'SIMULATING…' : isAttackSimulated ? 'RESET ATTACK' : 'SIMULATE THREAT'}</span>
+              </motion.button>
+            )}
+
+            <div className="h-4 w-[1px] bg-border/60 mx-1 hidden sm:block" />
+
+            <NotificationBell />
+
+            {/* User Session Profile */}
+            <div className="hidden md:flex items-center gap-2 pl-1 border-l border-border/50">
+              <div className="text-right leading-tight">
+                <div className="text-xs font-semibold text-foreground truncate max-w-[150px]">{user?.email}</div>
+                <div className="text-[10px] font-mono uppercase text-muted-foreground font-semibold">{user?.role}</div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={async () => { await mlBackendService.logout(); navigate('/login', { replace: true }); }}
+              className="inline-flex items-center px-2 py-1 rounded border border-border/70 hover:border-destructive/60 bg-secondary/40 text-[10px] font-mono text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              title="Sign Out"
             >
-              <Zap className={`w-3.5 h-3.5 ${isSimulating ? 'animate-spin' : ''}`} />
-              {isSimulating ? 'SIMULATING...' : isAttackSimulated ? 'RESET SYSTEM' : 'SIMULATE ATTACK'}
-            </motion.button>}
+              LOGOUT
+            </button>
           </div>
         </header>
 
@@ -282,6 +312,9 @@ export const Layout = ({ children }: LayoutProps) => {
           </motion.div>
         </main>
       </div>
+
+      {/* 21st.dev Command Palette */}
+      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
     </div>
   );
 };

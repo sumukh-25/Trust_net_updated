@@ -208,21 +208,24 @@ export default function OverviewPage() {
             </div>
           )}
 
-          {/* Topology and Device Registry 2-column layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Live Network Topology */}
-            <section className="panel panel-glow p-4 sm:p-5 rounded-xl border border-border/60 bg-card/70 flex flex-col justify-between">
+          {/* Topology and Device Registry widescreen SOC layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Prominent Central Live Network Topology Stage (span 8) */}
+            <section className="lg:col-span-8 panel panel-glow p-4 sm:p-5 rounded-xl border border-border/60 bg-card/70 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between pb-3 border-b border-border/40">
                   <div className="flex items-center gap-2">
                     <Activity className="w-4 h-4 text-primary" />
-                    <span className="font-bold text-sm text-foreground">Live Network Topology</span>
+                    <div>
+                      <span className="font-bold text-sm text-foreground">Live Network Topology &amp; Attack Propagation</span>
+                      <p className="text-[11px] text-muted-foreground hidden sm:block">Interactive threat graph · Hover or click nodes to pin telemetry inspector</p>
+                    </div>
                   </div>
                   <span className="badge badge-medium font-mono text-xs">{nodes.length} entities</span>
                 </div>
-                <div className="bg-radial-red topology-map my-3 rounded-lg overflow-hidden border border-border/40" aria-label="Live topology of registered users, devices, and protected assets">
+                <div className="bg-radial-red my-3 rounded-lg overflow-hidden border border-border/40 min-h-[340px]" aria-label="Live topology of registered users, devices, and protected assets">
                   {nodes.length ? (
-                    <NetworkGraph width={800} height={260} />
+                    <NetworkGraph width={800} height={340} />
                   ) : (
                     <div className="p-8 text-center text-xs text-muted-foreground">
                       Topology data is compiling from backend identity graph…
@@ -231,15 +234,15 @@ export default function OverviewPage() {
                 </div>
               </div>
               <div className="text-[11px] text-muted-foreground flex items-center justify-between pt-2 border-t border-border/30">
-                <span>Interactive node inspection</span>
+                <span className="font-mono text-[10px]">Real-time edge flow · Threat path simulation</span>
                 <Link to="/propagation" className="text-primary hover:underline flex items-center gap-1 font-semibold">
                   Risk Propagation View <ArrowRight className="w-3 h-3" />
                 </Link>
               </div>
             </section>
 
-            {/* Registered Devices */}
-            <section className="panel panel-glow p-4 sm:p-5 rounded-xl border border-border/60 bg-card/70 flex flex-col justify-between">
+            {/* Registered Devices Companion Panel (span 4) */}
+            <section className="lg:col-span-4 panel panel-glow p-4 sm:p-5 rounded-xl border border-border/60 bg-card/70 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between pb-3 border-b border-border/40">
                   <div className="flex items-center gap-2">

@@ -36,11 +36,13 @@ export const NetworkGraph = ({ width = 800, height = 500, graphNodes, graphEdges
   const nodes = graphNodes ?? contextNodes;
   const edges = graphEdges ?? contextEdges;
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
   const getNodeById = (id: string) => nodes.find(n => n.id === id);
+  const activeInspectorNode = getNodeById(selectedNode ?? hoveredNode ?? '');
 
   return (
-    <div className="relative w-full overflow-hidden rounded-lg">
+    <div className="relative w-full overflow-hidden rounded-lg group">
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="w-full h-auto"
@@ -133,6 +135,7 @@ export const NetworkGraph = ({ width = 800, height = 500, graphNodes, graphEdges
               className="cursor-pointer"
               onMouseEnter={() => setHoveredNode(node.id)}
               onMouseLeave={() => setHoveredNode(null)}
+              onClick={() => setSelectedNode(node.id === selectedNode ? null : node.id)}
             >
               {/* Pulse ring for compromised */}
               {node.compromised && (
@@ -248,6 +251,40 @@ export const NetworkGraph = ({ width = 800, height = 500, graphNodes, graphEdges
           ))}
         </g>
       </svg>
+
+      {/* 21st.dev Floating Node Inspector HUD */}
+      {activeInspectorNode && (
+        <div className="absolute right-3 top-3 p-3 rounded-lg border border-border/80 bg-background/90 backdrop-blur-md shadow-xl min-w-[200px] max-w-[240px] text-xs font-mono space-y-1.5 pointer-events-auto transition-all animate-in fade-in">
+          <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-1.5">
+            <span className="font-bold text-foreground truncate">{activeInspectorNode.label}</span>
+            <span className={`badge ${activeInspectorNode.compromised ? 'badge-critical' : 'badge-ok'} text-[9px]`}>
+              {activeInspectorNode.compromised ? 'COMPROMISED' : 'NOMINAL'}
+            </span>
+          </div>
+          <div className="flex justify-between text-[11px]">
+            <span className="text-muted-foreground">Entity Type:</span>
+            <span className="capitalize text-foreground font-semibold">{activeInspectorNode.type}</span>
+          </div>
+          <div className="flex justify-between text-[11px]">
+            <span className="text-muted-foreground">Propagation Risk:</span>
+            <span className={activeInspectorNode.propagationRisk > 60 ? 'text-destructive font-bold' : 'text-foreground'}>
+              {activeInspectorNode.propagationRisk}%
+            </span>
+          </div>
+          <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${activeInspectorNode.propagationRisk}%`,
+                background: activeInspectorNode.propagationRisk > 60 ? 'hsl(350 100% 59%)' : activeInspectorNode.propagationRisk > 30 ? 'hsl(38 95% 55%)' : 'hsl(142 70% 45%)'
+              }}
+            />
+          </div>
+          <div className="text-[10px] text-muted-foreground pt-0.5">
+            {selectedNode === activeInspectorNode.id ? 'Click node again to pin off' : 'Click node to pin inspector'}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

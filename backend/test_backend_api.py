@@ -373,6 +373,25 @@ class BackendApiTests(unittest.TestCase):
         self.assertEqual(reset.json()["status"], "reset")
         self.assertEqual(self.client.get("/api/baselines").json()["count"], 0)
 
+    def test_subsequent_login_from_same_baseline_device_is_allowed(self):
+        fingerprint = {
+            "userAgent": "subsequent-agent", "platform": "Win32", "language": "en-US",
+            "screenResolution": "1920x1080", "timezone": "Asia/Kolkata", "canvasHash": "canvas-subsequent",
+            "webglRenderer": "gpu-subsequent", "hardwareConcurrency": 8, "colorDepth": 24,
+            "deviceType": "desktop",
+        }
+        credentials = {"username": "sumukh", "password": "sumukh@123", "fingerprint": fingerprint}
+        first = self.client.post("/api/login", json=credentials)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()["login_status"], "allowed")
+
+        # Second login from the exact same device must remain allowed and not restricted
+        second = self.client.post("/api/login", json=credentials)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["login_status"], "allowed")
+        self.assertIsNotNone(second.json()["access_token"])
+
+
     def test_device_registry_requires_manual_trust_and_updates_risk(self):
         fingerprint = {
             "userAgent": "test-agent", "platform": "test-os", "language": "en-US",

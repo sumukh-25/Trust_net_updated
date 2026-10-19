@@ -33,6 +33,7 @@ from models.login_detector import (
     geoip_lookup, haversine, hash_fingerprint, compare_fingerprints,
     build_feature_vector, get_or_create_baseline, reset_baseline,
     reset_all_baselines, user_baselines, close_geoip_client,
+    _ensure_baselines_loaded,
 )
 from models import rate_limit
 from models.account_restrictions import active_restriction, list_restrictions, release_restriction
@@ -1246,6 +1247,7 @@ async def real_login(request: Request, response: Response, payload: dict = Body(
     print(f"   Time: {login_hour}:00")
 
     # -- STEP 3: Compare with stored baseline --
+    _ensure_baselines_loaded()
     is_first_login = username not in user_baselines
     baseline = get_or_create_baseline(username, fingerprint, geo, login_hour)
     device = register_login_device(username, fingerprint, first_login=is_first_login)
@@ -1513,7 +1515,7 @@ async def real_login(request: Request, response: Response, payload: dict = Body(
     elif not device_recognized:
         login_status = "denied"
         user_message = "Access denied. Unrecognized device."
-    elif not is_first_login and device["trust_status"] != "trusted":
+    elif not is_first_login and not baseline_device_match and device["trust_status"] != "trusted":
         login_status = "restricted"
         user_message = "Device is awaiting administrator trust approval."
     elif risk_score >= 70:
