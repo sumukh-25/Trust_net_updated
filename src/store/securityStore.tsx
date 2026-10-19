@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import { User, Incident, NetworkNode, NetworkEdge, initialUsers, initialIncidents } from '@/data/mockData';
+import type { User, Incident, NetworkNode, NetworkEdge } from '@/data/mockData';
 import { mlBackendService } from '@/services/mlBackendService';
 
 export type ThreatLevel = 'safe' | 'low' | 'medium' | 'high' | 'critical';
@@ -39,10 +39,11 @@ interface SecurityContextType extends SecurityState {
 
 const SecurityContext = createContext<SecurityContextType | null>(null);
 
+// Keep UI tiers aligned with the backend's documented 0-100 policy:
+// Monitor 0-30, MFA 31-60, Restrict 61-85, Block 86-100.
 export const getThreatLevel = (score: number): ThreatLevel => {
   if (score <= 30) return 'safe';
-  if (score <= 50) return 'low';
-  if (score <= 70) return 'medium';
+  if (score <= 60) return 'medium';
   if (score <= 85) return 'high';
   return 'critical';
 };
@@ -50,8 +51,8 @@ export const getThreatLevel = (score: number): ThreatLevel => {
 export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<SecurityState>({
     systemRiskScore: 0,
-    users: initialUsers,
-    incidents: initialIncidents,
+    users: [],
+    incidents: [],
     nodes: [],
     edges: [],
     activeAnomalies: 0,
@@ -151,7 +152,7 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         riskScore: 94,
         threatLevel: 'critical',
         status: 'active',
-        response: '🔴 AUTO-BLOCK: Session terminated. Account suspended. Security team notified.',
+        response: '🔴 DEMO SIMULATION: containment scenario recorded. Backend enforcement is shown in the Incident Center.',
         deviation: 96,
       };
 
@@ -176,8 +177,8 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     lastThreatTimestamp.current = null;
     setState({
       systemRiskScore: 0,
-      users: initialUsers,
-      incidents: initialIncidents,
+      users: [],
+      incidents: [],
       nodes: [],
       edges: [],
       activeAnomalies: 0,
@@ -236,8 +237,8 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     lastThreatTimestamp.current = null;
     setState({
       systemRiskScore: 0,
-      users: initialUsers,
-      incidents: initialIncidents,
+      users: [],
+      incidents: [],
       nodes: [],
       edges: [],
       activeAnomalies: 0,
@@ -269,8 +270,8 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       lastThreatTimestamp.current = null;
       setState({
         systemRiskScore: 0,
-        users: initialUsers,
-        incidents: initialIncidents,
+        users: [],
+        incidents: [],
         nodes: [],
         edges: [],
         activeAnomalies: 0,
@@ -313,8 +314,8 @@ export const SecurityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setLiveThreatPhase('idle');
         setState(prev => ({
           systemRiskScore: 0,
-          users: initialUsers,
-          incidents: initialIncidents,
+          users: [],
+          incidents: [],
           nodes: [],
           edges: [],
           activeAnomalies: 0,

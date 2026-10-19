@@ -184,7 +184,7 @@ const IncidentResponse = () => {
           <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
           <div className="space-y-4 pl-10">
             {[
-              { time: new Date().toLocaleTimeString(), event: isAttackSimulated ? '🔴 AUTO-BLOCK: Alex Chen account suspended' : '✅ System health check passed', color: isAttackSimulated ? 'hsl(350 100% 59%)' : 'hsl(150 68% 51%)' },
+              { time: new Date().toLocaleTimeString(), event: isAttackSimulated ? '🔴 DEMO SIMULATION: Alex Chen containment scenario' : '✅ System health check passed', color: isAttackSimulated ? 'hsl(350 100% 59%)' : 'hsl(150 68% 51%)' },
               { time: '10:15 AM', event: '⚡ Behavioral baseline updated — 5 users', color: 'hsl(350 100% 59%)' },
               { time: '09:45 AM', event: '⚠ Off-hours access flagged — MFA issued', color: 'hsl(38 95% 55%)' },
               { time: '09:02 AM', event: '✅ Daily risk model calibration complete', color: 'hsl(142 70% 45%)' },

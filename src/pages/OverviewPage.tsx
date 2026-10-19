@@ -1,10 +1,30 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  AlertTriangle,
+  Laptop,
+  Radio,
+  TrendingUp,
+  Activity,
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { NetworkGraph } from "@/components/NetworkGraph";
 import PageTransition from "@/components/PageTransition";
-import { mlBackendService, type BackendIncident, type DashboardSummary, type RegisteredDevice } from "@/services/mlBackendService";
+import {
+  mlBackendService,
+  type BackendIncident,
+  type DashboardSummary,
+  type RegisteredDevice,
+} from "@/services/mlBackendService";
 import { useAuth } from "@/store/authContext";
 import { useSecurity } from "@/store/securityStore";
 
@@ -33,7 +53,11 @@ export default function OverviewPage() {
   useEffect(() => {
     void refreshDashboard();
     const unsubscribe = mlBackendService.onThreatEvent((event) => {
-      if (event?.type === "dashboard_update" || event?.type === "login_threat" || event?.type === "attack_chain") {
+      if (
+        event?.type === "dashboard_update" ||
+        event?.type === "login_threat" ||
+        event?.type === "attack_chain"
+      ) {
         void refreshDashboard();
       }
     });
@@ -63,111 +87,357 @@ export default function OverviewPage() {
   return (
     <PageTransition>
       <Layout>
-        <div className="tn-content">
+        <div className="tn-content space-y-6">
+          {/* Top Title Bar with System Status */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 pb-4">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-primary/20 border border-primary/40 flex items-center justify-center text-primary shadow-sm shadow-primary/20">
+                  <Shield className="w-4 h-4" />
+                </div>
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+                  Cybersecurity Command Centre
+                </h1>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Real-time threat monitoring, identity risk fusion &amp; autonomous agent guardrails
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-mono border bg-emerald-500/10 text-emerald-400 border-emerald-500/30 flex items-center gap-1.5 font-semibold">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                DEFENSE ENGINE ACTIVE
+              </span>
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-mono border bg-card text-muted-foreground border-border/60">
+                AI CO-PILOT v2.4
+              </span>
+            </div>
+          </div>
+
+          {/* KPI Metrics Grid */}
           <div className="kpi-grid">
-            <KpiCard label="Average User Risk" value={summary ? summary.overall_risk.average.toFixed(1) : "—"} badge={{ text: summary ? `${summary.overall_risk.users_scored} scored` : "Loading", cls: "badge-medium" }} sub={summary ? `Maximum risk ${summary.overall_risk.maximum.toFixed(1)} / 100` : "Waiting for backend summary"} />
-            <KpiCard label="Active Incidents" value={summary ? String(activeIncidents).padStart(2, "0") : "—"} badge={{ text: activeIncidents ? "Review" : "Clear", cls: activeIncidents ? "badge-high" : "badge-ok" }} sub="Open or investigating" />
-            <KpiCard label="Trusted Devices" value={deviceCounts ? String(deviceCounts.trusted).padStart(2, "0") : "—"} badge={{ text: deviceCounts ? `${deviceCounts.total} total` : "Loading", cls: "badge-ok" }} sub="Manually approved fingerprints" />
             <KpiCard
-              label="Devices Requiring Review"
-              value={deviceCounts ? String(deviceCounts.unknown + deviceCounts.flagged).padStart(2, "0") : "—"}
-              badge={{ text: deviceCounts?.flagged ? `${deviceCounts.flagged} flagged` : "Registry", cls: deviceCounts?.flagged ? "badge-critical" : "badge-medium" }}
-              sub={deviceCounts ? `${deviceCounts.unknown} unknown · ${deviceCounts.flagged} flagged` : "Waiting for device registry"}
+              icon={TrendingUp}
+              color="hsl(350 100% 59%)"
+              label="Average User Risk"
+              value={summary ? summary.overall_risk.average.toFixed(1) : "—"}
+              badge={{
+                text: summary ? `${summary.overall_risk.users_scored} scored` : "Loading",
+                cls: "badge-medium",
+              }}
+              sub={
+                summary
+                  ? `Peak risk: ${summary.overall_risk.maximum.toFixed(1)} / 100`
+                  : "Connecting to risk engine"
+              }
             />
-            <Link to="/network-activity" className="overview-network-kpi-link" aria-label="View Network Activity anomalies">
-              <KpiCard label="Network Anomalies" value={summary ? String(summary.network_anomalies).padStart(2, "0") : "—"} badge={{ text: "Live", cls: summary?.network_anomalies ? "badge-high" : "badge-ok" }} sub="Flagged request patterns · view activity →" />
+
+            <KpiCard
+              icon={AlertTriangle}
+              color="hsl(20 95% 55%)"
+              label="Active Incidents"
+              value={summary ? String(activeIncidents).padStart(2, "0") : "—"}
+              badge={{
+                text: activeIncidents ? "Action Required" : "Nominal",
+                cls: activeIncidents ? "badge-critical" : "badge-ok",
+              }}
+              sub="Requiring analyst review or containment"
+            />
+
+            <KpiCard
+              icon={ShieldCheck}
+              color="hsl(142 70% 45%)"
+              label="Trusted Devices"
+              value={deviceCounts ? String(deviceCounts.trusted).padStart(2, "0") : "—"}
+              badge={{
+                text: deviceCounts ? `${deviceCounts.total} total` : "Loading",
+                cls: "badge-ok",
+              }}
+              sub="Cryptographically registered fingerprints"
+            />
+
+            <KpiCard
+              icon={Laptop}
+              color="hsl(38 95% 55%)"
+              label="Devices Requiring Review"
+              value={
+                deviceCounts
+                  ? String(deviceCounts.unknown + deviceCounts.flagged).padStart(2, "0")
+                  : "—"
+              }
+              badge={{
+                text: deviceCounts?.flagged ? `${deviceCounts.flagged} flagged` : "Registry",
+                cls: deviceCounts?.flagged ? "badge-critical" : "badge-medium",
+              }}
+              sub={
+                deviceCounts
+                  ? `${deviceCounts.unknown} unknown · ${deviceCounts.flagged} quarantined`
+                  : "Querying device registry"
+              }
+            />
+
+            <Link
+              to="/network-activity"
+              className="overview-network-kpi-link group"
+              aria-label="View Network Activity anomalies"
+            >
+              <KpiCard
+                icon={Radio}
+                color="hsl(280 80% 65%)"
+                label="Network Anomalies"
+                value={
+                  summary ? String(summary.network_anomalies).padStart(2, "0") : "—"
+                }
+                badge={{
+                  text: summary?.network_anomalies ? "Flagged" : "Clear",
+                  cls: summary?.network_anomalies ? "badge-high" : "badge-ok",
+                }}
+                sub="Live request behavioral anomalies →"
+              />
             </Link>
           </div>
 
-          {loadError && <div className="overview-load-error" role="status">Live backend data unavailable: {loadError}. Values below may be empty until the API reconnects.</div>}
+          {loadError && (
+            <div
+              className="p-3.5 rounded-lg border border-destructive/40 bg-destructive/10 text-destructive text-xs flex items-center gap-2"
+              role="status"
+            >
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>Live backend data unavailable: {loadError}. Reconnecting automatically…</span>
+            </div>
+          )}
 
-          <div className="two-col overview-panels">
-            <section className="panel panel-glow overview-panel">
-              <div className="overview-panel-heading">
-                <div className="heading" style={{ fontSize: 15, fontWeight: 700 }}>Live Network Topology</div>
-                <span className="badge badge-medium">{nodes.length} entities</span>
+          {/* Topology and Device Registry 2-column layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Live Network Topology */}
+            <section className="panel panel-glow p-4 sm:p-5 rounded-xl border border-border/60 bg-card/70 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between pb-3 border-b border-border/40">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-primary" />
+                    <span className="font-bold text-sm text-foreground">Live Network Topology</span>
+                  </div>
+                  <span className="badge badge-medium font-mono text-xs">{nodes.length} entities</span>
+                </div>
+                <div className="bg-radial-red topology-map my-3 rounded-lg overflow-hidden border border-border/40" aria-label="Live topology of registered users, devices, and protected assets">
+                  {nodes.length ? (
+                    <NetworkGraph width={800} height={260} />
+                  ) : (
+                    <div className="p-8 text-center text-xs text-muted-foreground">
+                      Topology data is compiling from backend identity graph…
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="bg-radial-red topology-map" aria-label="Live topology of registered users, devices, and protected assets">
-                {nodes.length ? <NetworkGraph width={800} height={260} /> : (
-                  <div className="device-empty">Topology data is unavailable until the backend connects.</div>
-                )}
+              <div className="text-[11px] text-muted-foreground flex items-center justify-between pt-2 border-t border-border/30">
+                <span>Interactive node inspection</span>
+                <Link to="/propagation" className="text-primary hover:underline flex items-center gap-1 font-semibold">
+                  Risk Propagation View <ArrowRight className="w-3 h-3" />
+                </Link>
               </div>
             </section>
 
-            <section className="panel panel-glow overview-panel">
-              <div className="device-registry-heading">
-                <div className="heading" style={{ fontSize: 15, fontWeight: 700 }}>Registered Devices</div>
-                <span className="badge badge-medium">{deviceCounts?.total ?? 0} tracked</span>
-              </div>
-              <div className="device-registry-list">
-                {devices.length === 0 ? (
-                  <div className="device-empty">No login fingerprints registered yet.</div>
-                ) : devices.slice(0, 6).map((device) => (
-                  <div className="device-registry-row" key={device.device_id}>
-                    <div className="device-registry-copy">
-                      <strong>{device.label}</strong>
-                      <span>{device.user_id} · seen {new Date(device.last_seen).toLocaleString()}</span>
-                    </div>
-                    <span className={`badge ${device.trust_status === "trusted" ? "badge-ok" : device.trust_status === "flagged" ? "badge-critical" : "badge-high"}`}>
-                      {device.trust_status}
-                    </span>
-                    {device.trust_status === "unknown" && hasPermission("manage_devices") && (
-                      <button className="device-trust-button" disabled={trustingDevice === device.device_id} onClick={() => void trustDevice(device.device_id)}>
-                        {trustingDevice === device.device_id ? "…" : "Trust"}
-                      </button>
-                    )}
+            {/* Registered Devices */}
+            <section className="panel panel-glow p-4 sm:p-5 rounded-xl border border-border/60 bg-card/70 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between pb-3 border-b border-border/40">
+                  <div className="flex items-center gap-2">
+                    <Laptop className="w-4 h-4 text-primary" />
+                    <span className="font-bold text-sm text-foreground">Registered Devices</span>
                   </div>
-                ))}
+                  <span className="badge badge-medium font-mono text-xs">{deviceCounts?.total ?? 0} tracked</span>
+                </div>
+
+                <div className="space-y-2 my-3">
+                  {devices.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-muted-foreground">
+                      No device fingerprints registered in database yet.
+                    </div>
+                  ) : (
+                    devices.slice(0, 5).map((device) => (
+                      <div
+                        className="p-2.5 rounded-lg border border-border/40 bg-secondary/30 flex items-center justify-between gap-3 text-xs"
+                        key={device.device_id}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded bg-card flex items-center justify-center text-muted-foreground border border-border/50 flex-shrink-0">
+                            <Laptop className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="truncate">
+                            <div className="font-semibold text-foreground truncate">{device.label}</div>
+                            <div className="text-[11px] text-muted-foreground font-mono truncate">
+                              {device.user_id} · {new Date(device.last_seen).toLocaleTimeString()}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span
+                            className={`badge ${
+                              device.trust_status === "trusted"
+                                ? "badge-ok"
+                                : device.trust_status === "flagged"
+                                ? "badge-critical"
+                                : "badge-high"
+                            }`}
+                          >
+                            {device.trust_status}
+                          </span>
+
+                          {device.trust_status === "unknown" && hasPermission("manage_devices") && (
+                            <button
+                              type="button"
+                              className="px-2.5 py-1 rounded bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-[11px] transition-colors"
+                              disabled={trustingDevice === device.device_id}
+                              onClick={() => void trustDevice(device.device_id)}
+                            >
+                              {trustingDevice === device.device_id ? "…" : "Trust"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-              <div className="hr overview-csi-divider" />
-              <div style={{ fontSize: 11.5, color: "var(--text-faint)", lineHeight: 1.6 }}>
-                Browser/device fingerprints are registered as unknown until an administrator approves them. RF/CSI hardware monitoring is not connected.
+
+              <div className="text-[11px] text-muted-foreground pt-2 border-t border-border/30">
+                Fingerprints are marked unknown until authorized. CSI/RF hardware is excluded.
               </div>
             </section>
           </div>
 
-          <section className="overview-incidents">
-            <div className="overview-section-heading">
-              <div className="heading" style={{ fontSize: 16, fontWeight: 700 }}>Recent Incidents</div>
-              <Link to="/incidents" style={{ fontSize: 13, fontWeight: 600 }}>View all →</Link>
+          {/* Recent Incidents Table */}
+          <section className="panel panel-glow p-4 sm:p-5 rounded-xl border border-border/60 bg-card/70 space-y-3">
+            <div className="flex items-center justify-between pb-3 border-b border-border/40">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-primary" />
+                <span className="font-bold text-sm text-foreground">Recent Security Incidents</span>
+              </div>
+              <Link
+                to="/incidents"
+                className="text-xs text-primary hover:underline font-semibold flex items-center gap-1"
+              >
+                Open Incident Center <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
-            <div className="panel panel-glow overview-table-wrap">
-              <table className="tn-table">
-                <thead><tr><th>ID</th><th>Summary</th><th>Severity</th><th>Agent</th><th>Status</th></tr></thead>
-                <tbody>
-                  {summaryIncidents.length ? summaryIncidents.map((incident) => <IncidentRow key={incident.id} incident={incident} />) : (
-                    <tr><td colSpan={5} className="overview-empty-row">No backend incidents recorded yet.</td></tr>
+
+            <div className="overflow-x-auto">
+              <table className="tn-table w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border/50 text-left text-muted-foreground">
+                    <th className="py-2.5 px-3">INCIDENT ID</th>
+                    <th className="py-2.5 px-3">SUMMARY & TARGET</th>
+                    <th className="py-2.5 px-3">SEVERITY</th>
+                    <th className="py-2.5 px-3">AGENT STATUS</th>
+                    <th className="py-2.5 px-3">LIFECYCLE</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/30">
+                  {summaryIncidents.length ? (
+                    summaryIncidents.map((incident) => (
+                      <IncidentRow key={incident.id} incident={incident} />
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                        No incidents logged in the SQLite ledger yet.
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
             </div>
           </section>
+
+          {/* Footer disclosure */}
+          <div className="p-3 rounded-lg border border-border/40 bg-card/30 text-[11px] font-mono text-muted-foreground/75 flex items-center justify-between">
+            <span>DATA PROVENANCE: SQLite Persisted State · Synthetic Demonstration Scenarios</span>
+            <span>TRUSTNET GUARDIAN SOC</span>
+          </div>
         </div>
       </Layout>
     </PageTransition>
   );
 }
 
-function KpiCard({ label, value, badge, sub }: { label: string; value: ReactNode; badge: { text: string; cls: string }; sub: string }) {
+function KpiCard({
+  icon: Icon,
+  color,
+  label,
+  value,
+  badge,
+  sub,
+}: {
+  icon: LucideIcon;
+  color: string;
+  label: string;
+  value: ReactNode;
+  badge: { text: string; cls: string };
+  sub: string;
+}) {
   return (
-    <div className="panel panel-glow card-3d kpi-card">
-      <div className="kpi-card-top"><div style={{ fontSize: 12, color: "var(--text-dim)" }}>{label}</div><span className={`badge ${badge.cls}`}>{badge.text}</span></div>
-      <div className="heading glow-text kpi-card-value">{value}</div>
-      <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 4 }}>{sub}</div>
+    <div className="panel panel-glow card-3d p-4 rounded-xl border border-border/60 bg-card/60 backdrop-blur-sm relative overflow-hidden transition-all duration-300 hover:border-primary/50 group">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+          style={{ background: `${color}18`, border: `1px solid ${color}40`, color }}
+        >
+          <Icon className="w-4 h-4" />
+        </div>
+        <span className={`badge ${badge.cls} text-[10px]`}>{badge.text}</span>
+      </div>
+
+      <div className="text-xs font-mono text-muted-foreground uppercase tracking-wider">{label}</div>
+      <div className="text-2xl font-bold font-mono tracking-tight text-foreground my-1 group-hover:text-primary transition-colors">
+        {value}
+      </div>
+      <div className="text-[11px] text-muted-foreground/80 truncate">{sub}</div>
     </div>
   );
 }
 
 function IncidentRow({ incident }: { incident: BackendIncident }) {
   const severity = incident.severity.toLowerCase();
-  const badge = severity === "critical" ? "badge-critical" : severity === "high" ? "badge-high" : "badge-medium";
+  const badge =
+    severity === "critical"
+      ? "badge-critical"
+      : severity === "high"
+      ? "badge-high"
+      : "badge-medium";
+
   return (
-    <tr>
-      <td className="mono">{incident.id}</td>
-      <td>{incident.title}</td>
-      <td><span className={`badge ${badge}`}>{incident.severity}</span></td>
-      <td>Risk Engine</td>
-      <td><span className={`badge ${incident.status === "resolved" ? "badge-ok" : incident.status === "dismissed" ? "badge-medium" : "badge-high"}`}>{incident.status}</span></td>
+    <tr className="hover:bg-muted/20 transition-colors">
+      <td className="py-2.5 px-3 font-mono font-medium text-foreground">{incident.id}</td>
+      <td className="py-2.5 px-3">
+        <div className="font-semibold text-foreground">{incident.title}</div>
+        <div className="text-[11px] text-muted-foreground font-mono">
+          User: {incident.user_id}
+          {incident.device_id ? ` · Dev: ${incident.device_id}` : ""}
+        </div>
+      </td>
+      <td className="py-2.5 px-3">
+        <span className={`badge ${badge}`}>{incident.severity}</span>
+      </td>
+      <td className="py-2.5 px-3">
+        <span className="text-xs font-mono text-muted-foreground flex items-center gap-1">
+          <Sparkles className="w-3 h-3 text-primary" /> Co-Pilot Ready
+        </span>
+      </td>
+      <td className="py-2.5 px-3">
+        <span
+          className={`badge ${
+            incident.status === "resolved"
+              ? "badge-ok"
+              : incident.status === "dismissed"
+              ? "badge-medium"
+              : "badge-high"
+          }`}
+        >
+          {incident.status}
+        </span>
+      </td>
     </tr>
   );
 }

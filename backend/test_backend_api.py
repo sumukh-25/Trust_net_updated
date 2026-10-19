@@ -20,13 +20,14 @@ import models.login_detector as login_detector
 import models.network_monitor as network_monitor
 import models.risk_engine as risk_engine
 import models.security_auth as security_auth
-from models.device_registry import register_login_device, reset_devices
+from models.device_registry import get_device, register_login_device, reset_devices
 from models.incident_store import reset_incidents
 from models.login_detector import reset_all_baselines
 from models.risk_engine import record_signals, reset_risk_state
 from models.security_auth import create_user, get_user_by_id, issue_access_token, list_users, reset_auth_state
 from models.network_monitor import list_network_events, network_score_for_user, record_auth_failure, record_request, reset_network_state
 from models.database import get_db_connection
+from models.refresh_tokens import issue_refresh_token
 from models.security_events import persist_security_event, validate_security_event, verify_audit_chain
 from models.risk_engine import calculate_centralized_risk, get_restrict_threshold, risk_tier_for_score
 
@@ -54,10 +55,166 @@ class BackendApiTests(unittest.TestCase):
         reset_network_state()
         main.reset_live_threat()
 
+
+    def test_refresh_cookie_rotates_and_reuse_revokes_family(self):
+        from http.cookies import SimpleCookie
+        raw, _family = issue_refresh_token("sumukh")
+        first = self.client.post("/api/auth/refresh", cookies={"trustnet_refresh": raw})
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertTrue(first.json().get("access_token"))
+        cookie = SimpleCookie()
+        cookie.load(first.headers.get("set-cookie", ""))
+        rotated_cookie = cookie["trustnet_refresh"].value
+        self.assertTrue(rotated_cookie)
+        self.assertNotEqual(rotated_cookie, raw)
+        # Replaying the old token must revoke the whole token family.
+        replay = self.client.post("/api/auth/refresh", cookies={"trustnet_refresh": raw})
+        self.assertEqual(replay.status_code, 401)
+        self.assertEqual(replay.json()["detail"]["code"], "REFRESH_REUSE_DETECTED")
+        after_reuse = self.client.post("/api/auth/refresh", cookies={"trustnet_refresh": rotated_cookie})
+        self.assertEqual(after_reuse.status_code, 401)
+
     def test_health_reports_ready_after_model_startup(self):
         response = self.client.get("/api/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "healthy")
+
+    def test_demo_reset_is_disabled_unless_explicitly_enabled(self):
+        previous = os.environ.pop("DEMO_MODE", None)
+        try:
+            response = self.client.post("/api/demo/reset")
+            self.assertEqual(response.status_code, 404)
+        finally:
+            if previous is not None:
+                os.environ["DEMO_MODE"] = previous
+
+    def test_demo_reset_requires_admin_permission(self):
+        previous = os.environ.get("DEMO_MODE")
+        os.environ["DEMO_MODE"] = "true"
+        try:
+            viewer = create_user("viewer-reset-test@example.test", "SafeTestPassword123!", "viewer")
+            viewer_token = issue_access_token(viewer)
+            response = self.client.post("/api/demo/reset", headers={"Authorization": f"Bearer {viewer_token}"})
+            self.assertEqual(response.status_code, 403)
+        finally:
+            if previous is None:
+                os.environ.pop("DEMO_MODE", None)
+            else:
+                os.environ["DEMO_MODE"] = previous
+
+    def test_demo_scenario_replay_is_disabled_without_demo_mode(self):
+        previous = os.environ.pop("DEMO_MODE", None)
+        try:
+            response = self.client.post("/api/demo/scenarios/brute_force/replay")
+            self.assertEqual(response.status_code, 404)
+        finally:
+            if previous is not None:
+                os.environ["DEMO_MODE"] = previous
+
+    def test_demo_scenario_replay_requires_admin_permission(self):
+        previous = os.environ.get("DEMO_MODE")
+        os.environ["DEMO_MODE"] = "true"
+        try:
+            viewer = create_user("scenario-viewer-test@example.test", "SafeTestPassword123!", "viewer")
+            viewer_token = issue_access_token(viewer)
+            response = self.client.post(
+                "/api/demo/scenarios/brute_force/replay",
+                headers={"Authorization": f"Bearer {viewer_token}"},
+            )
+            self.assertEqual(response.status_code, 403)
+        finally:
+            if previous is None:
+                os.environ.pop("DEMO_MODE", None)
+            else:
+                os.environ["DEMO_MODE"] = previous
+
+    def test_benign_scenario_records_telemetry_without_opening_incident(self):
+        previous = os.environ.get("DEMO_MODE")
+        os.environ["DEMO_MODE"] = "true"
+        try:
+            response = self.client.post("/api/demo/scenarios/benign_baseline/replay")
+            self.assertEqual(response.status_code, 200, response.text)
+            payload = response.json()
+            self.assertTrue(payload["synthetic_only"])
+            self.assertEqual(payload["scenario_id"], "benign_baseline")
+            self.assertIsNone(payload["incident"])
+            self.assertLess(payload["risk"]["score"], payload["risk"]["thresholds"]["restrict"])
+        finally:
+            if previous is None:
+                os.environ.pop("DEMO_MODE", None)
+            else:
+                os.environ["DEMO_MODE"] = previous
+
+    def test_brute_force_replay_creates_incident_linked_to_synthetic_event(self):
+        previous = os.environ.get("DEMO_MODE")
+        os.environ["DEMO_MODE"] = "true"
+        try:
+            response = self.client.post("/api/demo/scenarios/brute_force/replay")
+            self.assertEqual(response.status_code, 200, response.text)
+            payload = response.json()
+            self.assertTrue(payload["synthetic_only"])
+            self.assertGreaterEqual(payload["risk"]["score"], payload["risk"]["thresholds"]["restrict"])
+            self.assertIsNotNone(payload["incident"])
+            self.assertIn(payload["synthetic_event"]["id"], payload["incident"]["event_ids"])
+        finally:
+            if previous is None:
+                os.environ.pop("DEMO_MODE", None)
+            else:
+                os.environ["DEMO_MODE"] = previous
+
+    def test_malicious_scenarios_produce_expected_deterministic_attack_types(self):
+        previous = os.environ.get("DEMO_MODE")
+        os.environ["DEMO_MODE"] = "true"
+        expected = {
+            "brute_force": "brute_force",
+            "stolen_credentials": "stolen_credentials",
+            "data_exfiltration": "data_exfiltration",
+            "after_hours_sensitive_access": "after_hours_insider",
+        }
+        try:
+            for scenario_id, attack_type in expected.items():
+                response = self.client.post(f"/api/demo/scenarios/{scenario_id}/replay")
+                self.assertEqual(response.status_code, 200, f"{scenario_id}: {response.text}")
+                payload = response.json()
+                self.assertIsNotNone(payload["incident"], scenario_id)
+                self.assertEqual(payload["investigation"]["attack_type"]["type"], attack_type, scenario_id)
+                self.assertTrue(payload["scenario_evidence_event"]["event_payload"]["synthetic"])
+                self.assertGreaterEqual(len(payload["linked_event_ids"]), 2)
+                if scenario_id == "stolen_credentials":
+                    self.assertEqual(payload["incident"]["response_action"], "mfa_step_up_required")
+                    conn = get_db_connection()
+                    try:
+                        mfa_row = conn.execute("SELECT required_until FROM mfa_state WHERE user_id=? AND device_id='account'", ("demo-stolen_credentials",)).fetchone()
+                    finally:
+                        conn.close()
+                    self.assertIsNotNone(mfa_row, "Stolen-credential demo should trigger the MFA response action")
+        finally:
+            if previous is None:
+                os.environ.pop("DEMO_MODE", None)
+            else:
+                os.environ["DEMO_MODE"] = previous
+
+    def test_demo_reset_preserves_users_and_audit_history(self):
+        previous = os.environ.get("DEMO_MODE")
+        os.environ["DEMO_MODE"] = "true"
+        try:
+            before_users = len(list_users())
+            before_audit = self.client.get("/api/audit/verify").json()
+            response = self.client.post("/api/demo/reset")
+            self.assertEqual(response.status_code, 200, response.text)
+            payload = response.json()
+            self.assertEqual(payload["status"], "reset")
+            self.assertIn("users", payload["preserved"])
+            self.assertIn("audit_entries", payload["preserved"])
+            self.assertEqual(len(list_users()), before_users)
+            after_audit = self.client.get("/api/audit/verify").json()
+            self.assertTrue(after_audit.get("valid", False), after_audit)
+            self.assertGreaterEqual(after_audit.get("checked", 0), before_audit.get("checked", 0))
+        finally:
+            if previous is None:
+                os.environ.pop("DEMO_MODE", None)
+            else:
+                os.environ["DEMO_MODE"] = previous
 
     def test_risk_score_increases_for_large_behavior_deviations(self):
         normal = {
@@ -261,7 +418,13 @@ class BackendApiTests(unittest.TestCase):
 
         incident = self.client.get("/api/incidents").json()["incidents"][0]
         self.assertEqual(incident["status"], "open")
-        approved = self.client.post(f"/api/incidents/{incident['id']}/approve")
+        # Security fix: the incident targets 'sumukh', so sumukh must NOT be able to approve it (403).
+        self_approval = self.client.post(f"/api/incidents/{incident['id']}/approve")
+        self.assertEqual(self_approval.status_code, 403)
+        self.assertFalse(get_device(device_id)["quarantined"])
+        # A different, authorized analyst may approve.
+        analyst_headers = {"Authorization": f"Bearer {issue_access_token(get_user_by_id('alex_chen'))}"}
+        approved = self.client.post(f"/api/incidents/{incident['id']}/approve", headers=analyst_headers)
         self.assertEqual(approved.status_code, 200)
         self.assertEqual(approved.json()["device"]["trust_status"], "flagged")
         self.assertTrue(approved.json()["device"]["quarantined"])
@@ -274,7 +437,10 @@ class BackendApiTests(unittest.TestCase):
         })
         self.assertEqual(blocked_session.status_code, 403)
 
-        dismissed = self.client.post(f"/api/incidents/{incident['id']}/dismiss")
+        # The incident targets 'sumukh', so sumukh must not be able to dismiss it either (self-decision is blocked).
+        self_dismiss = self.client.post(f"/api/incidents/{incident['id']}/dismiss")
+        self.assertEqual(self_dismiss.status_code, 403)
+        dismissed = self.client.post(f"/api/incidents/{incident['id']}/dismiss", headers=analyst_headers)
         self.assertEqual(dismissed.status_code, 200)
         self.assertEqual(dismissed.json()["incident"]["status"], "dismissed")
 
@@ -483,7 +649,14 @@ class BackendApiTests(unittest.TestCase):
         viewer = create_user("viewer-test@trustnet.local", "a-long-viewer-password", "viewer")
         viewer_token = issue_access_token(viewer)
         headers = {"Authorization": f"Bearer {viewer_token}"}
-        self.assertEqual(self.client.get("/api/dashboard/summary", headers=headers).status_code, 200)
+        summary_response = self.client.get("/api/dashboard/summary", headers=headers)
+        self.assertEqual(summary_response.status_code, 200)
+        summary = summary_response.json()
+        for field in ("systemRisk", "avgUserRisk", "openIncidents", "anomalies", "trustedDevices", "devicesToReview", "networkAnomalies", "mlStatus", "dataSource"):
+            self.assertIn(field, summary)
+        self.assertEqual(summary["dataSource"], "runtime")
+        self.assertGreaterEqual(summary["systemRisk"], 0)
+        self.assertLessEqual(summary["systemRisk"], 100)
         self.assertEqual(self.client.post("/api/baselines/reset", json={}, headers=headers).status_code, 403)
         self.assertEqual(self.client.post("/api/auth/register", json={
             "email": "blocked-create@trustnet.local", "password": "another-long-password", "role": "analyst",
@@ -592,10 +765,13 @@ class BackendApiTests(unittest.TestCase):
         ))
 
     def test_network_events_are_logged_and_anomaly_flags_feed_risk(self):
+        # Health is routine dashboard polling and must not inflate user request counts.
+        before_ids = {item["id"] for item in list_network_events(limit=1000)}
         self.client.get("/api/health")
-        logged_health = list_network_events(limit=1)[0]
-        self.assertEqual(logged_health["endpoint"], "/api/health")
-        self.assertEqual(logged_health["status_code"], 200)
+        after_events = list_network_events(limit=1000)
+        new_health_events = [item for item in after_events
+                             if item["endpoint"] == "/api/health" and item["id"] not in before_ids]
+        self.assertEqual(new_health_events, [], "Dashboard health polling should be excluded from request telemetry")
 
         first, flags = record_request(
             ip="203.0.113.10", user_id="network-user", endpoint="/api/auth/login",
@@ -736,16 +912,16 @@ class BackendApiTests(unittest.TestCase):
         self.assertIn("tier", response.json())
 
     def test_restrict_threshold_creates_incident_at_boundary(self):
-        self.assertEqual(risk_tier_for_score(59.99), "MFA")
-        self.assertEqual(risk_tier_for_score(60.0), "Restrict")
+        self.assertEqual(risk_tier_for_score(60.99), "MFA")
+        self.assertEqual(risk_tier_for_score(61.0), "Restrict")
         risk = {
             "level": "high", "user_id": "threshold-user", "device_id": None,
-            "breakdown": {}, "thresholds": {"restrict": 60.0},
+            "breakdown": {}, "thresholds": {"restrict": 61.0},
         }
-        self.assertIsNone(incident_store.maybe_create_risk_incident({**risk, "score": 59.99}))
-        incident = incident_store.maybe_create_risk_incident({**risk, "score": 60.0})
+        self.assertIsNone(incident_store.maybe_create_risk_incident({**risk, "score": 60.99}))
+        incident = incident_store.maybe_create_risk_incident({**risk, "score": 61.0})
         self.assertIsNotNone(incident)
-        self.assertEqual(incident["risk_score"], 60.0)
+        self.assertEqual(incident["risk_score"], 61.0)
 
     def test_admin_can_persist_restrict_threshold_and_viewer_cannot_change_it(self):
         updated = self.client.put("/api/policies/restrict-threshold", json={"restrict_threshold": 65})
@@ -766,8 +942,137 @@ class BackendApiTests(unittest.TestCase):
         invalid = self.client.put("/api/policies/restrict-threshold", json={"restrict_threshold": 90})
         self.assertEqual(invalid.status_code, 422)
         self.assertEqual(self.client.put(
-            "/api/policies/restrict-threshold", json={"restrict_threshold": 60},
+            "/api/policies/restrict-threshold", json={"restrict_threshold": 61},
         ).status_code, 200)
+
+    def test_mfa_step_up_blocks_then_allows_after_one_time_code(self):
+        from models.mfa import clear_mfa_state
+        from models.security_auth import create_user, issue_access_token, get_user_by_id
+        target = get_user_by_id("mfa-test-viewer")
+        if target is None:
+            create_user("mfa-test-viewer@trustnet.local", "StrongDemoPassw0rd!", "viewer", user_id="mfa-test-viewer")
+            target = get_user_by_id("mfa-test-viewer")
+        token = issue_access_token(target)
+        headers = {"Authorization": f"Bearer {token}"}
+        clear_mfa_state("mfa-test-viewer")
+        admin_token = issue_access_token(get_user_by_id("sumukh"))
+        required = self.client.post("/api/users/mfa-test-viewer/mfa/require", headers={"Authorization": f"Bearer {admin_token}"})
+        self.assertEqual(required.status_code, 200, required.text)
+        blocked = self.client.get("/api/dashboard/summary", headers=headers)
+        self.assertEqual(blocked.status_code, 403)
+        self.assertEqual(blocked.json()["detail"]["code"], "MFA_REQUIRED")
+        previous_demo = os.environ.get("DEMO_MODE")
+        os.environ["DEMO_MODE"] = "1"
+        try:
+            challenge = self.client.post("/api/mfa/challenge", headers=headers)
+            self.assertEqual(challenge.status_code, 200, challenge.text)
+            code = challenge.json().get("demo_code")
+            self.assertRegex(code or "", r"^\d{6}$")
+            verified = self.client.post("/api/mfa/verify", headers=headers, json={"code": code})
+            self.assertEqual(verified.status_code, 200, verified.text)
+            allowed = self.client.get("/api/dashboard/summary", headers=headers)
+            self.assertEqual(allowed.status_code, 200, allowed.text)
+            replay = self.client.post("/api/mfa/verify", headers=headers, json={"code": code})
+            self.assertEqual(replay.status_code, 403)
+        finally:
+            if previous_demo is None:
+                os.environ.pop("DEMO_MODE", None)
+            else:
+                os.environ["DEMO_MODE"] = previous_demo
+            clear_mfa_state("mfa-test-viewer")
+
+    def test_read_only_restriction_allows_dashboard_but_denies_sensitive_reads_and_writes(self):
+        from models.account_restrictions import create_restriction, reset_restrictions
+        from models.security_auth import create_user, get_user_by_id, issue_access_token
+        target = get_user_by_id("readonly-test-viewer")
+        if target is None:
+            create_user("readonly-test-viewer@trustnet.local", "StrongDemoPassw0rd!", "viewer", user_id="readonly-test-viewer")
+            target = get_user_by_id("readonly-test-viewer")
+        reset_restrictions()
+        create_restriction(target, minutes=5, incident_id=None, action_id=None, actor="test", reason="test read-only", mode="read_only")
+        headers = {"Authorization": f"Bearer {issue_access_token(target)}"}
+        self.assertEqual(self.client.get("/api/dashboard/summary", headers=headers).status_code, 200)
+        self.assertEqual(self.client.get("/api/protected-assets/admin-db", headers=headers).status_code, 403)
+        self.assertEqual(self.client.post("/api/notifications/read-all", headers=headers).status_code, 403)
+        reset_restrictions()
+
+    def test_protected_demo_asset_access_is_audited_and_returns_metadata_only(self):
+        from models.security_auth import create_user, get_user_by_id, issue_access_token
+        from models.database import get_db_connection
+        admin_token = issue_access_token(get_user_by_id("sumukh"))
+        allowed = self.client.get("/api/protected-assets/admin-db", headers={"Authorization": f"Bearer {admin_token}"})
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+        self.assertTrue(allowed.json()["synthetic_metadata_only"])
+        self.assertNotIn("rows", allowed.json())
+        viewer = get_user_by_id("asset-test-viewer")
+        if viewer is None:
+            create_user("asset-test-viewer@trustnet.local", "StrongDemoPassw0rd!", "viewer", user_id="asset-test-viewer")
+            viewer = get_user_by_id("asset-test-viewer")
+        from models.device_registry import register_login_device
+        fingerprint = {"userAgent": "TrustNet Rogue Test", "platform": "Test OS", "language": "en-US", "screenResolution": "1280x720", "timezone": "UTC", "canvasHash": "asset-rogue-device", "webglRenderer": "test", "hardwareConcurrency": 4, "colorDepth": 24, "deviceType": "desktop"}
+        device = register_login_device(viewer["id"], fingerprint)
+        denied = self.client.get("/api/protected-assets/admin-db", headers={"Authorization": f"Bearer {issue_access_token(viewer, device_id=device['device_id'])}"})
+        self.assertEqual(denied.status_code, 403)
+        conn = get_db_connection()
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM security_events WHERE event_category='protected_asset_access' AND request_path='/api/protected-assets/admin-db'").fetchone()[0]
+            linked_incidents = conn.execute("SELECT COUNT(*) FROM incidents WHERE user_id='asset-test-viewer' AND status IN ('open','investigating')").fetchone()[0]
+        finally:
+            conn.close()
+        self.assertGreaterEqual(count, 2)
+        self.assertGreaterEqual(linked_incidents, 1, "Denied sensitive access should raise a risk incident")
+        from models.network_topology import build_network_topology
+        topology = build_network_topology()
+        self.assertTrue(any(edge["from"] == f"device:{device['device_id']}" and edge["to"] == "asset:admin-db" and edge.get("attackPath") for edge in topology["edges"]))
+
+    def test_revoked_device_persists_and_blocks_the_next_authenticated_request(self):
+        from models.security_auth import create_user, get_user_by_id, issue_access_token
+        from models.device_registry import register_login_device, get_device
+        user = get_user_by_id("device-revoke-viewer")
+        if user is None:
+            create_user("device-revoke-viewer@trustnet.local", "StrongDemoPassw0rd!", "viewer", user_id="device-revoke-viewer")
+            user = get_user_by_id("device-revoke-viewer")
+        fingerprint = {"userAgent": "TrustNet Test", "platform": "Test OS", "language": "en-US", "screenResolution": "1280x720", "timezone": "UTC", "canvasHash": "revoke-device", "webglRenderer": "test", "hardwareConcurrency": 8, "colorDepth": 24, "deviceType": "desktop"}
+        device = register_login_device(user["id"], fingerprint)
+        token = issue_access_token(user, device_id=device["device_id"])
+        headers = {"Authorization": f"Bearer {token}"}
+        self.assertEqual(self.client.get("/api/dashboard/summary", headers=headers).status_code, 200)
+        admin_token = issue_access_token(get_user_by_id("sumukh"))
+        revoked = self.client.post(f"/api/devices/{device['device_id']}/revoke", headers={"Authorization": f"Bearer {admin_token}"})
+        self.assertEqual(revoked.status_code, 200, revoked.text)
+        self.assertEqual(get_device(device["device_id"])["trust_status"], "revoked")
+        denied = self.client.get("/api/dashboard/summary", headers=headers)
+        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(denied.json()["detail"]["code"], "DEVICE_REVOKED")
+
+    def test_user_management_blocks_self_escalation_and_viewer_admin_routes(self):
+        self_escalation = self.client.patch("/api/users/sumukh", json={"role": "viewer"})
+        self.assertEqual(self_escalation.status_code, 403)
+        from models.security_auth import create_user, get_user_by_id, issue_access_token
+        viewer = get_user_by_id("manage-test-viewer")
+        if viewer is None:
+            create_user("manage-test-viewer@trustnet.local", "StrongDemoPassw0rd!", "viewer", user_id="manage-test-viewer")
+            viewer = get_user_by_id("manage-test-viewer")
+        viewer_headers = {"Authorization": f"Bearer {issue_access_token(viewer)}"}
+        denied = self.client.patch("/api/users/alex_chen", headers=viewer_headers, json={"role": "admin"})
+        self.assertEqual(denied.status_code, 403)
+
+    def test_cors_preflight_allows_patch_for_admin_user_update(self):
+        # Regression: PATCH /api/users/{id} exists but CORS previously omitted PATCH.
+        origin = "http://localhost:5173"
+        resp = self.client.options(
+            "/api/users/sumukh",
+            headers={"Origin": origin, "Access-Control-Request-Method": "PATCH",
+                     "Access-Control-Request-Headers": "authorization,content-type"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("PATCH", resp.headers.get("access-control-allow-methods", ""))
+        self.assertEqual(resp.headers.get("access-control-allow-origin"), origin)
+        evil = self.client.options(
+            "/api/users/sumukh",
+            headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "PATCH"},
+        )
+        self.assertNotEqual(evil.headers.get("access-control-allow-origin"), "https://evil.example")
 
 
 if __name__ == "__main__":

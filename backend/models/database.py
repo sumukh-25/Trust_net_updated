@@ -28,6 +28,15 @@ def get_db_connection() -> sqlite3.Connection:
     return connection
 
 
+def get_readonly_connection() -> sqlite3.Connection:
+    """Connection that cannot write: used for the Investigator's evidence tools."""
+    _ensure_parent_dir()
+    connection = sqlite3.connect(_DB_PATH)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA query_only=ON")
+    return connection
+
+
 def initialize_database() -> None:
     """Create the minimal tables required for durable event and risk data."""
     connection = get_db_connection()
@@ -111,13 +120,28 @@ def initialize_database() -> None:
                 expires_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS refresh_sessions (
+                token_hash TEXT PRIMARY KEY,
+                family_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                device_id TEXT,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                revoked_at TEXT,
+                replaced_by_hash TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_refresh_sessions_family ON refresh_sessions(family_id);
+            CREATE INDEX IF NOT EXISTS idx_refresh_sessions_user ON refresh_sessions(user_id);
+
             CREATE TABLE IF NOT EXISTS policy_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
             INSERT OR IGNORE INTO policy_settings (key, value, updated_at)
-                VALUES ('restrict_threshold', '60', CURRENT_TIMESTAMP);
+                VALUES ('restrict_threshold', '61', CURRENT_TIMESTAMP);
+            UPDATE policy_settings SET value = '61', updated_at = CURRENT_TIMESTAMP
+                WHERE key = 'restrict_threshold' AND value = '60';
 
             CREATE TABLE IF NOT EXISTS risk_assessments (
                 id TEXT PRIMARY KEY,
@@ -238,6 +262,75 @@ def initialize_database() -> None:
                 event_id TEXT NOT NULL,
                 PRIMARY KEY (incident_id, event_id)
             );
+
+            CREATE TABLE IF NOT EXISTS agent_activity (
+                id TEXT PRIMARY KEY,
+                incident_id TEXT,
+                agent TEXT NOT NULL,
+                action TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                details TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_agent_activity_time ON agent_activity(created_at);
+            CREATE INDEX IF NOT EXISTS idx_agent_activity_incident ON agent_activity(incident_id);
+
+            CREATE TABLE IF NOT EXISTS response_actions (
+                id TEXT PRIMARY KEY,
+                incident_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                target TEXT,
+                target_user_id TEXT,
+                mode TEXT NOT NULL,
+                status TEXT NOT NULL,
+                rationale TEXT,
+                safeguards TEXT,
+                decided_by TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                executed_at TEXT,
+                expires_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_response_actions_incident ON response_actions(incident_id);
+
+            CREATE TABLE IF NOT EXISTS analyst_feedback (
+                id TEXT PRIMARY KEY,
+                incident_id TEXT NOT NULL,
+                verdict TEXT NOT NULL CHECK (verdict IN ('true_positive', 'false_positive')),
+                notes TEXT,
+                analyst_id TEXT,
+                rules_fired TEXT NOT NULL,
+                investigator_confidence REAL NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_analyst_feedback_incident ON analyst_feedback(incident_id, created_at);
+
+            CREATE TABLE IF NOT EXISTS notifications (
+                id TEXT PRIMARY KEY,
+                incident_id TEXT,
+                channel TEXT NOT NULL,
+                recipient TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error TEXT,
+                created_at TEXT NOT NULL,
+                sent_at TEXT,
+                read_at TEXT,
+                dedup_key TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_notifications_time ON notifications(created_at);
+
+            CREATE TABLE IF NOT EXISTS agent_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT OR IGNORE INTO agent_settings (key, value, updated_at) VALUES
+                ('autonomy_mode', 'recommend', CURRENT_TIMESTAMP),
+                ('kill_switch', '0', CURRENT_TIMESTAMP),
+                ('auto_max_per_hour', '3', CURRENT_TIMESTAMP),
+                ('auto_min_confidence', '0.85', CURRENT_TIMESTAMP);
             """
         )
         incident_columns = {
@@ -246,6 +339,18 @@ def initialize_database() -> None:
         for column in ("evidence", "risk_breakdown"):
             if column not in incident_columns:
                 connection.execute(f"ALTER TABLE incidents ADD COLUMN {column} TEXT")
+        response_columns = {row["name"] for row in connection.execute("PRAGMA table_info(response_actions)")}
+        if "expires_at" not in response_columns:
+            connection.execute("ALTER TABLE response_actions ADD COLUMN expires_at TEXT")
+        notification_columns = {row["name"] for row in connection.execute("PRAGMA table_info(notifications)")}
+        for column in ("read_at", "dedup_key"):
+            if column not in notification_columns:
+                connection.execute(f"ALTER TABLE notifications ADD COLUMN {column} TEXT")
+        if "incident_number" not in incident_columns:
+            connection.execute("ALTER TABLE incidents ADD COLUMN incident_number INTEGER")
+        connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_incidents_number ON incidents(incident_number) WHERE incident_number IS NOT NULL"
+        )
         connection.commit()
     finally:
         connection.close()

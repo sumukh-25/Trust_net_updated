@@ -4,10 +4,9 @@ import {
   AreaChart, Area, LineChart, Line, BarChart, Bar,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine
 } from 'recharts';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { generateBehaviorData, generateRiskTrendData } from '@/data/mockData';
 import { useSecurity } from '@/store/securityStore';
-import { useMLBackend } from '@/hooks/useMLBackend';
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
@@ -45,34 +44,6 @@ const BehaviorAnalytics = () => {
   const { users, isAttackSimulated } = useSecurity();
   const attackedUser = users.find(u => u.id === 'u1');
   
-  // ML Backend integration
-  const { isConnected, calculateRisk, error: mlError } = useMLBackend();
-  const [mlRiskScores, setMlRiskScores] = useState<any>({});
-
-  useEffect(() => {
-    // Calculate ML-based risk scores when backend is connected
-    if (isConnected && attackedUser) {
-      const metrics = {
-        normal_login_time: 9.2,
-        actual_login_time: isAttackSimulated ? 23.8 : 9.3,
-        normal_session_duration: 4.5,
-        actual_session_duration: isAttackSimulated ? 0.3 : 4.2,
-        normal_data_volume: 120,
-        actual_data_volume: isAttackSimulated ? 850 : 118,
-        normal_api_calls: 45,
-        actual_api_calls: isAttackSimulated ? 312 : 48,
-        normal_geo_distance: 0,
-        actual_geo_distance: isAttackSimulated ? 9847 : 12,
-        anomaly_score: isAttackSimulated ? 0.85 : 0.15,
-      };
-      
-      calculateRisk(attackedUser.id, metrics).then((result) => {
-        if (result) {
-          setMlRiskScores(result);
-        }
-      });
-    }
-  }, [isConnected, isAttackSimulated, attackedUser, calculateRisk]);
 
   const attackDeviationData = isAttackSimulated ? [
     { label: 'Login Time', normal: 9.2, actual: 23.8, deviation: 158.7 },
@@ -87,7 +58,7 @@ const BehaviorAnalytics = () => {
       <div>
         <h1 className="text-xl font-bold">Behavior Analytics</h1>
         <p className="text-xs text-muted-foreground font-mono mt-0.5">
-          Cognitive fingerprint analysis · Isolation Forest anomaly detection
+          Synthetic demo charts · Isolation Forest backend available for explicit submitted metrics
         </p>
       </div>
 
@@ -101,8 +72,8 @@ const BehaviorAnalytics = () => {
           <div className="flex items-center gap-2 mb-4">
             <Clock className="w-4 h-4 text-primary" />
             <div>
-              <div className="text-sm font-medium">Login Pattern — 24h</div>
-              <div className="text-[10px] text-muted-foreground font-mono">Normal vs Anomalous activity</div>
+              <div className="text-sm font-medium">Login Pattern — 24h <span className="text-[9px] text-warning">DEMO DATA</span></div>
+              <div className="text-[10px] text-muted-foreground font-mono">Illustrative values; not collected from real users</div>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={180}>
@@ -137,8 +108,8 @@ const BehaviorAnalytics = () => {
           <div className="flex items-center gap-2 mb-4">
             <TrendingDown className="w-4 h-4 text-warning" />
             <div>
-              <div className="text-sm font-medium">Weekly Risk Score Trend</div>
-              <div className="text-[10px] text-muted-foreground font-mono">LSTM Autoencoder output</div>
+              <div className="text-sm font-medium">Weekly Risk Score Trend <span className="text-[9px] text-warning">DEMO DATA</span></div>
+              <div className="text-[10px] text-muted-foreground font-mono">Generated demo values · LSTM integration planned</div>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={180}>

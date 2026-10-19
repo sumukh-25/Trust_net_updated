@@ -3,6 +3,7 @@ import { Layout } from "@/components/Layout";
 import PageTransition from "@/components/PageTransition";
 import { mlBackendService, type BackendIncident, type SecurityEvent } from "@/services/mlBackendService";
 import { useAuth } from "@/store/authContext";
+import AgentPanel from "@/components/AgentPanel";
 
 const SEVERITY_BADGE: Record<string, string> = {
   Critical: "badge-critical",
@@ -56,7 +57,7 @@ export default function IncidentCenterPage() {
   useEffect(() => {
     void refreshIncidents();
     const unsubscribe = mlBackendService.onThreatEvent((event) => {
-      if (event?.type === "dashboard_update" || event?.type === "login_threat" || event?.type === "attack_chain") {
+      if (event?.type === "dashboard_update" || event?.type === "login_threat" || event?.type === "attack_chain" || event?.type === "agent_activity") {
         void refreshIncidents();
       }
     });
@@ -138,7 +139,7 @@ export default function IncidentCenterPage() {
               <section className="panel panel-glow incident-detail">
                 <div className="incident-detail-heading">
                   <div>
-                    <span className="mono incident-id">{selected.id}</span>
+                    <span className="mono incident-id">{selected.incident_label ? `${selected.incident_label} · ` : ""}{selected.id}</span>
                     <div className="heading incident-title">{selected.title}</div>
                     <div className="incident-list-status">User {selected.user_id}{selected.device_id ? ` · device ${selected.device_id}` : ""}</div>
                   </div>
@@ -153,6 +154,7 @@ export default function IncidentCenterPage() {
                 </div>
 
                 {selected.risk_breakdown && <RiskBreakdown breakdown={selected.risk_breakdown} />}
+                <AgentPanel incidentId={selected.id} canAct={hasPermission("approve_incidents")} onChanged={() => void refreshIncidents()} />
                 <div className="incident-evidence">
                   <div className="incident-section-label">Correlated security events</div>
                   {eventsLoading ? <span className="network-muted">Loading event records…</span> : relatedEvents.length ? (

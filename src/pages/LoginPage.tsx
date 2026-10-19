@@ -5,7 +5,7 @@ import { mlBackendService } from "@/services/mlBackendService";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("sumukh");
+  const [username, setUsername] = useState(import.meta.env.DEV ? "sumukh" : "");
   const [password, setPassword] = useState("");
   const [authenticating, setAuthenticating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +135,7 @@ export default function LoginPage() {
               <rect x="3" y="11" width="18" height="10" rx="2" />
               <path d="M7 11V7a5 5 0 0110 0v4" />
             </svg>
-            <span>CSI-Enabled Device Identity Verification</span>
+            <span>Browser/device fingerprint checks · CSI hardware planned</span>
           </div>
         </div>
       </section>
@@ -212,7 +212,7 @@ export default function LoginPage() {
                 <span>NODE-07 · IN-MEMORY</span>
                 <span className="secure-channel">● SECURE CHANNEL</span>
               </div>
-              <p className="login-hint">Demo: sumukh / sumukh@123 · First successful sign-in saves this device as your baseline.</p>
+              <p className="login-hint">{import.meta.env.DEV ? "Local demo account: sumukh / sumukh@123 (development builds only). " : ""}First successful sign-in saves this device as your baseline.</p>
             </div>
           </div>
         </div>

@@ -3,9 +3,7 @@ import { Shield, AlertTriangle, Activity, TrendingUp, Eye, Lock, CheckCircle, Lo
 import { useSecurity, getThreatLevel } from '@/store/securityStore';
 import { RiskMeter } from '@/components/RiskMeter';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { useMemo, useState, useEffect } from 'react';
-import { generateRiskTrendData } from '@/data/mockData';
-import { useMLBackend } from '@/hooks/useMLBackend';
+import { Fragment, useState, useEffect, type ElementType } from 'react';
 import { collectFingerprint, getFingerprintId } from '@/services/fingerprintService';
 import { mlBackendService } from '@/services/mlBackendService';
 
@@ -15,7 +13,7 @@ const StatCard = ({
   title, value, subtitle, icon: Icon, color, delay = 0,
 }: {
   title: string; value: string | number; subtitle: string;
-  icon: React.ElementType; color: string; delay?: number;
+  icon: ElementType; color: string; delay?: number;
 }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
@@ -314,10 +312,10 @@ const XAIPanel = ({ explanation }: { explanation: LoginResult['explanation'] }) 
               {Object.entries(explanation.classifier.global_feature_importance)
                 .sort(([,a], [,b]) => b - a)
                 .map(([f, v]) => (
-                <React.Fragment key={f}>
+                <Fragment key={f}>
                   <span className="text-muted-foreground truncate">{f.replace(/_/g, ' ')}</span>
                   <span className="text-foreground">{v.toFixed(1)}%</span>
-                </React.Fragment>
+                </Fragment>
               ))}
             </div>
           </div>
@@ -697,32 +695,11 @@ const AttackChainTimeline = ({ data, running, showFullXAI, onToggleXAI }: { data
 // ══════════════════════════════════════════════
 
 const Overview = () => {
+  const [mlStatus, setMlStatus] = useState<string>('initializing');
+  useEffect(() => { void mlBackendService.getDashboardSummary().then((summary) => setMlStatus(summary.mlStatus ?? 'initializing')).catch(() => setMlStatus('unavailable')); }, []);
   const { systemRiskScore, users, incidents, activeAnomalies, isAttackSimulated, setLocalFingerprintId, attackChainData, attackChainRunning, startAttackChain, stopAttackChain, resetSimulation, liveThreatData } = useSecurity();
-  const trendData = useMemo(() => generateRiskTrendData(), []);
   const activeIncidents = incidents.filter(i => i.status === 'active').length;
 
-  const { isConnected: mlConnected, batchAnalyzeUsers } = useMLBackend();
-  const [mlAnalysisResults, setMlAnalysisResults] = useState<any>({});
-
-  useEffect(() => {
-    if (mlConnected && users.length > 0) {
-      const usersForAnalysis = users.slice(0, 5).map(u => ({
-        id: u.id, normal_login_time: 9.2, actual_login_time: Math.random() * 20,
-        normal_session_duration: 4.5, actual_session_duration: Math.random() * 8,
-        normal_data_volume: 120, actual_data_volume: 100 + Math.random() * 200,
-        normal_api_calls: 45, actual_api_calls: 40 + Math.random() * 50,
-        normal_geo_distance: 0, actual_geo_distance: Math.random() * 100,
-        anomaly_score: Math.random() * 0.3,
-      }));
-      batchAnalyzeUsers(usersForAnalysis).then((result) => {
-        if (result?.user_risk_scores) {
-          const scoreMap: any = {};
-          result.user_risk_scores.forEach((item: any) => { scoreMap[item.user_id] = item; });
-          setMlAnalysisResults(scoreMap);
-        }
-      });
-    }
-  }, [mlConnected, users, batchAnalyzeUsers]);
 
   const threatLvl = getThreatLevel(systemRiskScore);
   const threatColors: Record<string, string> = {
@@ -732,8 +709,8 @@ const Overview = () => {
   const threatColor = threatColors[threatLvl];
 
   // ── Login state ──
-  const [username, setUsername] = useState('sumukh');
-  const [password, setPassword] = useState('sumukh@123');
+  const [username, setUsername] = useState(import.meta.env.DEV ? 'sumukh' : '');
+  const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginResult, setLoginResult] = useState<LoginResult | null>(null);
   const [loginError, setLoginError] = useState('');
@@ -770,7 +747,7 @@ const Overview = () => {
             <div>
               <h1 className="text-xl font-bold text-foreground">TrustNet AI Guardian</h1>
               <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                Real-time threat intelligence &middot; ML Powered: {mlConnected ? '\u2713 Active' : '\u26A0 Pending'} &middot; Last updated: {new Date().toLocaleTimeString()}
+                Real-time threat intelligence &middot; ML Powered: {mlStatus === 'available' ? '\u2713 Active' : '\u26A0 ' + mlStatus} &middot; Last updated: {new Date().toLocaleTimeString()}
               </p>
             </div>
             {isAttackSimulated && (
@@ -844,7 +821,7 @@ const Overview = () => {
                   type="password" value={password}
                   onChange={e => setPassword(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                  placeholder="sumukh@123 / admin123"
+                  placeholder="Enter your password"
                   className="w-full px-3 py-2.5 rounded-lg bg-background border border-border text-foreground font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                   disabled={isLoggingIn}
                 />
@@ -1171,12 +1148,12 @@ const Overview = () => {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <div className="text-sm font-medium">Risk Trend &mdash; 7 Day</div>
-                <div className="text-[10px] text-muted-foreground font-mono">Behavioral baseline</div>
+                <div className="text-[10px] text-muted-foreground font-mono">Historical series unavailable — no persisted trend endpoint</div>
               </div>
               <TrendingUp className="w-4 h-4 text-primary" />
             </div>
             <ResponsiveContainer width="100%" height={140}>
-              <AreaChart data={trendData}>
+              <AreaChart data={[]}>
                 <defs>
                   <linearGradient id="riskGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="hsl(350 100% 59%)" stopOpacity={0.3} />
@@ -1190,6 +1167,7 @@ const Overview = () => {
                 <Area type="monotone" dataKey="riskScore" stroke="hsl(350 100% 59%)" strokeWidth={2} fill="url(#riskGrad)" />
               </AreaChart>
             </ResponsiveContainer>
+            <p className="mt-2 text-[10px] text-muted-foreground font-mono">No historical risk points are plotted. This panel will display data once a persisted risk-history API is available.</p>
           </motion.div>
         </div>
       </div>

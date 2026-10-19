@@ -93,12 +93,12 @@ def get_device(device_id: str) -> dict[str, Any] | None:
 
 
 def set_device_status(device_id: str, trust_status: str, *, quarantined: bool | None = None) -> dict[str, Any] | None:
-    if trust_status not in {"trusted", "unknown", "flagged"}:
-        raise ValueError("trust_status must be trusted, unknown, or flagged")
+    if trust_status not in {"trusted", "unknown", "flagged", "revoked"}:
+        raise ValueError("trust_status must be trusted, unknown, flagged, or revoked")
     device = get_device(device_id)
     if device is None:
         return None
-    is_quarantined = device["quarantined"] if quarantined is None else quarantined
+    is_quarantined = (trust_status == "revoked") if quarantined is None and trust_status == "revoked" else (device["quarantined"] if quarantined is None else quarantined)
     connection = get_db_connection()
     try:
         connection.execute(

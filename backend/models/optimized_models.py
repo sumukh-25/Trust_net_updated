@@ -15,7 +15,12 @@ warnings.filterwarnings('ignore')
 
 
 class OptimizedAnomalyDetector:
-    """Production-grade Anomaly Detector with hyperparameter optimization"""
+    """Isolation-Forest anomaly detector with contamination tuning.
+
+    NOTE: the bundled training data is SYNTHETIC (see generate_training_data). Metrics returned by
+    train() are computed on the training split itself and are not a generalisation estimate; use
+    evaluate_synthetic.py for a held-out (still synthetic) comparison.
+    """
     
     def __init__(self):
         self.model = None
@@ -191,6 +196,16 @@ class OptimizedAnomalyDetector:
         if not self.trained or self.model is None:
             raise ValueError("Model must be trained first")
         
+        X = np.asarray(X, dtype=float)
+        if X.ndim != 2:
+            raise ValueError(f"Expected a 2-D array of shape (n_samples, n_features), got {X.ndim}-D")
+        expected = getattr(self.scaler, "n_features_in_", None)
+        if expected is not None and X.shape[1] != expected:
+            raise ValueError(f"Expected {expected} features, got {X.shape[1]}")
+        if X.shape[0] == 0:
+            raise ValueError("Empty input")
+        if not np.isfinite(X).all():
+            raise ValueError("Input contains NaN or infinite values")
         X_scaled = self.scaler.transform(X)
         predictions = self.model.predict(X_scaled)
         scores = -self.model.score_samples(X_scaled)
@@ -224,7 +239,7 @@ class OptimizedAnomalyDetector:
 class AdvancedRiskScorer:
     """Optimized risk scoring with adaptive weights"""
     
-    # Optimized weights based on real threat data
+    # Hand-chosen heuristic weights (not fitted to real-world attack data)
     OPTIMAL_WEIGHTS = {
         'login_deviation': 0.18,      # Increased - most suspicious
         'session_deviation': 0.15,    # Increased

@@ -1,7 +1,8 @@
 """SQLite-backed incident lifecycle store for the single-process demo."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
+import os
 from typing import Any
 from uuid import uuid4
 
@@ -17,6 +18,10 @@ def _decode_incident(row: Any) -> dict[str, Any]:
     incident["evidence"] = json.loads(incident.pop("evidence") or "[]")
     incident["risk_breakdown"] = json.loads(incident.pop("risk_breakdown") or "{}")
     incident["event_ids"] = json.loads(incident.pop("event_ids") or "[]")
+    findings = incident.get("investigator_findings")
+    incident["investigator_findings"] = json.loads(findings) if findings else None
+    number = incident.get("incident_number")
+    incident["incident_label"] = f"TN-{int(number):05d}" if number else None
     return incident
 
 
@@ -32,11 +37,25 @@ def _link_event_ids(connection: Any, incident_id: str, event_ids: list[str]) -> 
     return [row["event_id"] for row in rows]
 
 
+def _correlation_window_minutes() -> int:
+    """Return the configured open-incident correlation window (default: 30 minutes)."""
+    raw = os.getenv("TRUSTNET_INCIDENT_CORRELATION_MINUTES", "30")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = 30
+    # Keep correlation bounded and avoid accidentally disabling it with bad config.
+    return max(1, min(value, 24 * 60))
+
+
 def maybe_create_risk_incident(
     risk: dict[str, Any], *, evidence: list[str] | None = None, event_ids: list[str] | None = None,
 ) -> dict[str, Any] | None:
-    """Create/update one open high-risk incident per user and device."""
-    restrict_threshold = float(risk.get("thresholds", {}).get("restrict", 60.0))
+    """Create/update one open high-risk incident per user/device within the correlation window.
+
+    A later burst after the window creates a new incident even if an older incident remains open.
+    """
+    restrict_threshold = float(risk.get("thresholds", {}).get("restrict", 61.0))
     if risk["score"] < restrict_threshold:
         return None
     user_id = risk["user_id"]
@@ -44,12 +63,14 @@ def maybe_create_risk_incident(
     connection = get_db_connection()
     try:
         connection.execute("BEGIN IMMEDIATE")
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=_correlation_window_minutes())).isoformat()
         existing = connection.execute(
             """SELECT * FROM incidents
                WHERE user_id = ? AND device_id IS ?
                  AND status IN ('open', 'investigating')
+                 AND created_at >= ?
                ORDER BY created_at DESC LIMIT 1""",
-            (user_id, device_id),
+            (user_id, device_id, cutoff),
         ).fetchone()
         if existing:
             incident = _decode_incident(existing)
@@ -88,13 +109,16 @@ def maybe_create_risk_incident(
             "event_ids": [],
         }
         incident["event_ids"] = _link_event_ids(connection, incident["id"], event_ids or [])
+        incident["incident_number"] = (
+            connection.execute("SELECT COALESCE(MAX(incident_number), 0) + 1 FROM incidents").fetchone()[0]
+        )
         connection.execute(
             """INSERT INTO incidents
-               (id, title, severity, user_id, device_id, risk_score, status, created_at,
+               (id, incident_number, title, severity, user_id, device_id, risk_score, status, created_at,
                 updated_at, response_action, evidence, risk_breakdown, event_ids)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                incident["id"], incident["title"], incident["severity"], incident["user_id"],
+                incident["id"], incident["incident_number"], incident["title"], incident["severity"], incident["user_id"],
                 incident["device_id"], incident["risk_score"], incident["status"],
                 incident["created_at"], incident["updated_at"], incident["response_action"],
                 json.dumps(incident["evidence"]), json.dumps(incident["risk_breakdown"]),
@@ -102,6 +126,7 @@ def maybe_create_risk_incident(
             ),
         )
         connection.commit()
+        incident["incident_label"] = f"TN-{incident['incident_number']:05d}"
         return incident
     except Exception:
         connection.rollback()
@@ -223,6 +248,19 @@ def reset_incidents() -> None:
     try:
         connection.execute("DELETE FROM incident_events")
         connection.execute("DELETE FROM incidents")
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def save_investigation(incident_id: str, findings: dict[str, Any]) -> None:
+    """Persist Investigator output on the incident without touching its lifecycle status."""
+    connection = get_db_connection()
+    try:
+        connection.execute(
+            "UPDATE incidents SET investigator_findings = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(findings), _now(), incident_id),
+        )
         connection.commit()
     finally:
         connection.close()

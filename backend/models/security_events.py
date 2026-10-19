@@ -351,13 +351,18 @@ def get_event_retention_days() -> int:
 
 
 def prune_old_events() -> int:
-    """Delete expired events, returning the number of removed rows."""
+    """Delete expired events that are NOT covered by the audit chain, returning the number of removed rows.
+
+    Audited events are append-only evidence: deleting one would make verify_audit_chain() report 'event_missing'
+    forever, so they are retained regardless of age. (Every event written by persist_security_event is audited,
+    so in practice this only removes legacy rows that pre-date the chain.)"""
     days = get_event_retention_days()
     cutoff = (datetime.now(timezone.utc).timestamp() - (days * 86400))
     connection = get_db_connection()
     try:
         cursor = connection.execute(
-            "DELETE FROM security_events WHERE datetime(timestamp) < datetime(?, 'unixepoch')",
+            "DELETE FROM security_events WHERE datetime(timestamp) < datetime(?, 'unixepoch') "
+            "AND id NOT IN (SELECT event_id FROM audit_entries)",
             (cutoff,),
         )
         connection.commit()

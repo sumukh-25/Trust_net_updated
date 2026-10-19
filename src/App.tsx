@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-route
 import { SecurityProvider } from "@/store/securityStore";
 import { Layout } from "@/components/Layout";
 import { AlertPopup } from "@/components/AlertPopup";
+import MFAChallengeDialog from "@/components/MFAChallengeDialog";
 import PageTransition from "@/components/PageTransition";
 import OverviewPage from "@/pages/OverviewPage";
 import BehaviorAnalyticsPage from "@/pages/BehaviorAnalyticsPage";
@@ -34,6 +35,7 @@ function DashboardRoutes() {
   return (
     <SecurityProvider>
       <AlertPopup />
+      <MFAChallengeDialog />
       <AnimatePresence mode="wait" initial={false}>
         <Routes location={location} key={location.pathname}>
           <Route path="/overview" element={<OverviewPage />} />
@@ -41,12 +43,14 @@ function DashboardRoutes() {
           <Route path="/behavior" element={<BehaviorAnalyticsPage />} />
           <Route path="/behavior-analytics" element={<BehaviorAnalyticsPage />} />
           <Route path="/network-activity" element={<NetworkActivityPage />} />
+          <Route path="/threat-map" element={<NetworkActivityPage />} />
           <Route path="/behavior-live" element={<BehaviorAnalyticsPage />} />
           <Route path="/propagation" element={<RiskPropagationPage />} />
           <Route path="/risk-propagation" element={<RiskPropagationPage />} />
           <Route path="/propagation-live" element={<RiskPropagationPage />} />
           <Route path="/incidents" element={<IncidentCenterPage />} />
           <Route path="/incidents-live" element={<IncidentCenterPage />} />
+          <Route path="/response" element={<IncidentCenterPage />} />
           <Route path="/admin" element={hasPermission("manage_users") ? withDashboardShell(<AdminPanel />) : withDashboardShell(<NotFound />)} />
           <Route path="*" element={withDashboardShell(<NotFound />)} />
         </Routes>
@@ -59,7 +63,15 @@ function AnimatedRoutes() {
   const location = useLocation();
   const isLoginRoute = location.pathname === "/" || location.pathname === "/login";
   const routeGroup = isLoginRoute ? "login" : "dashboard";
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isRestoring } = useAuth();
+
+  if (isRestoring) {
+    return (
+      <div role="status" aria-live="polite" className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+        Restoring your session…
+      </div>
+    );
+  }
 
   return (
     <AnimatePresence mode="wait" initial={false}>

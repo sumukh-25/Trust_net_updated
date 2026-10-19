@@ -39,3 +39,11 @@ __pycache__/
 *.sw?
 
 backend/final_backend_output.txt
+
+# Verification output and local databases
+verification-report.txt
+*.db
+*.db-shm
+*.db-wal
+Trust_net_updated-main/
+*.zip

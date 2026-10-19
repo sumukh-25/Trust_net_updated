@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from models.database import get_db_connection
@@ -13,6 +14,10 @@ _DEMO_ASSETS = (
     ("asset-people-api", "People Directory API", "app", 3, "internal"),
     ("asset-analytics-db", "Analytics Warehouse", "database", 4, "confidential"),
     ("asset-identity-vault", "Identity Vault", "database", 5, "restricted"),
+    ("admin-db", "Administration Database", "database", 5, "restricted"),
+    ("finance-db", "Finance Database", "database", 5, "restricted"),
+    ("hr-records", "Human Resources Records", "database", 4, "confidential"),
+    ("file-export-log", "File Export Log", "service", 4, "confidential"),
 )
 
 # Demo authorization is least-privilege: analysts and viewers cannot write or
@@ -27,6 +32,15 @@ _DEMO_POLICIES = (
     ("analyst", "asset-people-api", "read", 1),
     ("analyst", "asset-analytics-db", "read", 1),
     ("viewer", "asset-people-api", "read", 1),
+    ("admin", "admin-db", "read", 1),
+    ("admin", "admin-db", "write", 1),
+    ("admin", "finance-db", "read", 1),
+    ("admin", "finance-db", "write", 1),
+    ("admin", "hr-records", "read", 1),
+    ("admin", "file-export-log", "read", 1),
+    ("analyst", "finance-db", "read", 1),
+    ("analyst", "hr-records", "read", 1),
+    ("analyst", "file-export-log", "read", 1),
 )
 
 
@@ -146,11 +160,47 @@ def build_network_topology() -> dict[str, Any]:
                     "active": True, "attackPath": risk >= 50,
                 })
 
+    # Include real persisted protected-asset access attempts in the topology. A denied
+    # access is still an attempted path and is rendered as an attack edge, not as an
+    # authorized relationship. Event payloads contain metadata only.
+    connection = get_db_connection()
+    try:
+        access_rows = connection.execute(
+            "SELECT event_payload FROM security_events WHERE event_category='protected_asset_access' ORDER BY timestamp DESC LIMIT 500"
+        ).fetchall()
+    finally:
+        connection.close()
+    access_edges: list[dict[str, Any]] = []
+    known_edge_pairs = {(edge["from"], edge["to"]) for edge in edges}
+    known_device_ids = {device["device_id"] for device in devices}
+    known_asset_ids = {asset["asset_id"] for asset in assets}
+    for row in access_rows:
+        try:
+            payload = json.loads(row["event_payload"] or "{}")
+        except (TypeError, ValueError):
+            continue
+        asset_id = str(payload.get("asset_id") or "")
+        device_id = str(payload.get("device_id") or "")
+        if asset_id not in known_asset_ids:
+            continue
+        if not payload.get("allowed", False):
+            asset_risks[asset_id] = max(asset_risks.get(asset_id, 0.0), 100.0)
+        elif device_id in device_risk:
+            asset_risks[asset_id] = max(asset_risks.get(asset_id, 0.0), device_risk[device_id])
+        if device_id in known_device_ids:
+            source, target = f"device:{device_id}", f"asset:{asset_id}"
+            if (source, target) not in known_edge_pairs:
+                access_edges.append({"from": source, "to": target, "active": True,
+                                     "attackPath": not bool(payload.get("allowed", False)) or asset_risks.get(asset_id, 0.0) >= 50,
+                                     "accessAttempt": True, "allowed": bool(payload.get("allowed", False))})
+                known_edge_pairs.add((source, target))
+
     for asset, (x, y) in zip(assets, positions["asset"]):
         add_node(
             f"asset:{asset['asset_id']}", asset["label"], asset["asset_type"],
             x, y, asset_risks[asset["asset_id"]],
         )
+    edges.extend(access_edges)
     return {"nodes": nodes, "edges": edges, "assets": assets, "policy_default": "deny"}
 
 

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Settings, Zap, Shield, Sliders, ToggleLeft, ToggleRight, AlertTriangle, UserPlus, Users } from 'lucide-react';
+import { Settings, Zap, Shield, Sliders, ToggleLeft, ToggleRight, AlertTriangle, UserPlus, Users, ShieldCheck } from 'lucide-react';
 import { useSecurity } from '@/store/securityStore';
 import { useEffect, useState, type FormEvent } from 'react';
 import { mlBackendService } from '@/services/mlBackendService';
@@ -12,10 +12,12 @@ const AdminPanel = () => {
     activeAnomalies,
   } = useSecurity();
 
-  const [sensitivity, setSensitivity] = useState(75);
-  const [restrictThreshold, setRestrictThreshold] = useState(60);
+  const [sensitivity, setSensitivity] = useState(100); // score multiplier in % (50-150), saved to the backend risk policy
+  const [policyVersion, setPolicyVersion] = useState<number | null>(null);
+  const [riskPolicyLoaded, setRiskPolicyLoaded] = useState(false);
+  const [restrictThreshold, setRestrictThreshold] = useState(61);
   const [policyLoaded, setPolicyLoaded] = useState(false);
-  const [learningRate, setLearningRate] = useState(0.3);
+  const [learningRate, setLearningRate] = useState(0.25);
   const [geoBlocking, setGeoBlocking] = useState(true);
   const [deviceTrust, setDeviceTrust] = useState(true);
   const [mlModel, setMlModel] = useState<'isolation-forest' | 'lstm'>('isolation-forest');
@@ -31,6 +33,10 @@ const AdminPanel = () => {
   const [accountMessage, setAccountMessage] = useState('');
   const [selectedHistoryUser, setSelectedHistoryUser] = useState('');
   const [loginAttempts, setLoginAttempts] = useState<Array<Record<string, unknown>>>([]);
+  const [auditStatus, setAuditStatus] = useState<{ valid: boolean; checked: number; broken_event_id?: string | null; reason?: string; untracked_event_count?: number; head_hash?: string } | null>(null);
+  const [auditBusy, setAuditBusy] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoMessage, setDemoMessage] = useState('');
 
   useEffect(() => {
     void mlBackendService.getUsers().then(setManagedUsers).catch((error) => {
@@ -47,6 +53,38 @@ const AdminPanel = () => {
       setActionError(true);
     });
   }, []);
+
+  useEffect(() => {
+    void mlBackendService.getRiskPolicy().then((policy) => {
+      setSensitivity(Math.round(policy.sensitivity * 100));
+      setLearningRate(policy.learning_rate);
+      setGeoBlocking(policy.geo_enabled);
+      setDeviceTrust(policy.device_trust_enabled);
+      setPolicyVersion(policy.version);
+      setRiskPolicyLoaded(true);
+    }).catch((error) => {
+      setActionMessage(error instanceof Error ? error.message : 'Could not load the saved risk policy.');
+      setActionError(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!riskPolicyLoaded) return;
+    const timer = window.setTimeout(() => {
+      void mlBackendService.updateRiskPolicy({
+        sensitivity: sensitivity / 100, learning_rate: learningRate,
+        geo_enabled: geoBlocking, device_trust_enabled: deviceTrust,
+      }).then((policy) => {
+        setPolicyVersion(policy.version);
+        setActionMessage(`Risk policy saved (version ${policy.version}); the risk engine reads it on every evaluation.`);
+        setActionError(false);
+      }).catch((error) => {
+        setActionMessage(error instanceof Error ? error.message : 'Risk policy update failed.');
+        setActionError(true);
+      });
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [riskPolicyLoaded, sensitivity, learningRate, geoBlocking, deviceTrust]);
 
   useEffect(() => {
     if (!policyLoaded) return;
@@ -181,6 +219,40 @@ const AdminPanel = () => {
     }
   };
 
+  const replayScenario = async (scenarioId: string) => {
+    setDemoBusy(true); setDemoMessage(`Replaying ${scenarioId.replace(/_/g, ' ')} through the backend risk pipeline…`);
+    try {
+      const result = await mlBackendService.replayDemoScenario(scenarioId);
+      setDemoMessage(`${result.scenario_title}: risk ${result.risk?.score ?? 'n/a'} (${result.risk?.level ?? 'unknown'}). ${result.incident ? `Incident ${result.incident.incident_label || result.incident.id} created/updated.` : 'No incident opened.'} Synthetic data only.`);
+    } catch (error) {
+      setDemoMessage(error instanceof Error ? error.message : 'Scenario replay failed. Check DEMO_MODE and administrator permissions.');
+    } finally { setDemoBusy(false); }
+  };
+
+  const resetDemoData = async () => {
+    if (!window.confirm('Reset demo activity? Accounts and append-only audit history are preserved. This works only when DEMO_MODE is enabled.')) return;
+    setDemoBusy(true); setDemoMessage('Resetting demo activity…');
+    try {
+      const result = await mlBackendService.resetDemo();
+      setDemoMessage(result.message);
+    } catch (error) {
+      setDemoMessage(error instanceof Error ? error.message : 'Demo reset failed. Check DEMO_MODE and administrator permissions.');
+    } finally { setDemoBusy(false); }
+  };
+
+  const verifyAudit = async () => {
+    setAuditBusy(true);
+    setAuditStatus(null);
+    try {
+      const result = await mlBackendService.verifyAuditChain();
+      setAuditStatus(result);
+    } catch (error) {
+      setAuditStatus({ valid: false, checked: 0, reason: error instanceof Error ? error.message : 'Audit verification failed.' });
+    } finally {
+      setAuditBusy(false);
+    }
+  };
+
   const recalibrateBaselines = async () => {
     const confirmed = window.confirm(
       'Clear every stored device baseline in the backend? Each account will establish a new baseline on its next successful login. This does not retrain the ML models.'
@@ -218,6 +290,39 @@ const AdminPanel = () => {
         </p>
       </div>
 
+      <div className="cyber-card rounded-xl p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="w-5 h-5 text-primary mt-0.5" />
+          <div>
+            <div className="text-sm font-semibold">Append-only audit chain</div>
+            <p className="text-xs text-muted-foreground mt-1">Verify the persisted hash chain. This detects edits in the local chain; it is not externally anchored.</p>
+            {auditStatus && <p className={`text-xs mt-2 ${auditStatus.valid ? 'text-emerald-400' : 'text-destructive'}`}>
+              {auditStatus.valid ? `Valid · ${auditStatus.checked} entries checked` : `Verification failed · ${auditStatus.reason || 'unknown reason'} · event ${auditStatus.broken_event_id || 'untracked'}`}
+            </p>}
+          </div>
+        </div>
+        <button type="button" onClick={() => void verifyAudit()} disabled={auditBusy} className="px-4 py-2 rounded-md border border-primary/40 text-sm disabled:opacity-50">
+          {auditBusy ? 'Verifying…' : 'Verify audit chain'}
+        </button>
+      </div>
+
+      <div className="cyber-card rounded-xl p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Synthetic demo controls</div>
+            <p className="mt-1 text-xs text-muted-foreground">These requests use fictional scenario signals and the backend risk/incident pipeline. They are not live attacks.</p>
+          </div>
+          <button type="button" onClick={() => void resetDemoData()} disabled={demoBusy} className="rounded-md border border-destructive/40 px-3 py-2 text-xs text-destructive disabled:opacity-50">Reset demo activity</button>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {[
+            ['benign_baseline', 'Benign baseline'], ['brute_force', 'Brute force'], ['stolen_credentials', 'Stolen credentials'],
+            ['data_exfiltration', 'Data exfiltration'], ['after_hours_sensitive_access', 'After-hours access'],
+          ].map(([id, label]) => <button key={id} type="button" disabled={demoBusy} onClick={() => void replayScenario(id)} className="rounded-md border border-primary/30 px-3 py-2 text-xs disabled:opacity-50">{label}</button>)}
+        </div>
+        {demoMessage && <p className="mt-3 rounded-md bg-muted p-3 text-xs" role="status">{demoMessage}</p>}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Autonomous Mode */}
         <motion.div
@@ -232,7 +337,7 @@ const AdminPanel = () => {
             <Zap className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium">Digital Immune System</span>
           </div>
-          <p className="mb-4 text-[10px] text-warning">These toggles are local demonstration state; they do not change backend enforcement.</p>
+          <p className="mb-4 text-[10px] text-warning">These toggles are local demonstration state; they do not change backend enforcement. The backend kill switch and autonomy policy are controlled separately.</p>
 
           <div className="space-y-4">
             {/* Autonomous toggle */}
@@ -240,7 +345,7 @@ const AdminPanel = () => {
               <div>
                 <div className="text-sm font-medium">Autonomous Mode</div>
                 <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                  AI auto-responds to threats without human approval
+                  Bounded response; destructive actions require human approval
                 </div>
               </div>
               <button onClick={() => setAutonomousMode(!autonomousMode)} className="flex-shrink-0">
@@ -301,7 +406,7 @@ const AdminPanel = () => {
           </div>
 
           <div className="space-y-5">
-            {/* Auto-block threshold */}
+            {/* Restrict-tier threshold */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs font-medium">Restrict Threshold</div>
@@ -332,39 +437,44 @@ const AdminPanel = () => {
               </div>
               <input
                 type="range"
-                min={20}
-                max={100}
+                min={50}
+                max={150}
+                step={5}
                 value={sensitivity}
                 onChange={(e) => setSensitivity(Number(e.target.value))}
                 className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
                 style={{
-                  background: `linear-gradient(to right, hsl(38 95% 55%) ${sensitivity}%, hsl(220 25% 20%) ${sensitivity}%)`
+                  background: `linear-gradient(to right, hsl(38 95% 55%) ${sensitivity - 50}%, hsl(220 25% 20%) ${sensitivity - 50}%)`
                 }}
               />
               <div className="flex justify-between text-[9px] font-mono text-muted-foreground mt-1">
-                <span>20% (Low FP)</span>
-                <span>100% (Max)</span>
+                <span>50% (Fewer alerts)</span>
+                <span>150% (More alerts)</span>
               </div>
             </div>
 
             {/* Learning rate */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-medium">AI Learning Rate</div>
+                <div className="text-xs font-medium">Analyst-Verdict Learning Rate</div>
                 <div className="font-mono text-sm font-bold text-primary">{learningRate.toFixed(2)}</div>
               </div>
               <input
                 type="range"
-                min={0.05}
-                max={0.8}
+                min={0}
+                max={0.5}
                 step={0.05}
                 value={learningRate}
                 onChange={(e) => setLearningRate(Number(e.target.value))}
                 className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
                 style={{
-                  background: `linear-gradient(to right, hsl(350 100% 59%) ${(learningRate / 0.8) * 100}%, hsl(225 10% 20%) ${(learningRate / 0.8) * 100}%)`
+                  background: `linear-gradient(to right, hsl(350 100% 59%) ${(learningRate / 0.5) * 100}%, hsl(225 10% 20%) ${(learningRate / 0.5) * 100}%)`
                 }}
               />
+            </div>
+
+            <div className="text-[9px] font-mono text-muted-foreground">
+              Sensitivity scales the fused risk score; learning rate sets how many points an analyst verdict moves that user&apos;s score (rate × 20, capped at ±15). {policyVersion !== null ? `Policy version ${policyVersion}.` : ''}
             </div>
 
             {/* Response level legend */}
@@ -372,9 +482,9 @@ const AdminPanel = () => {
               <div className="text-muted-foreground font-medium mb-2">AUTO-RESPONSE LEVELS:</div>
               {[
                 { range: '0–30', action: 'Normal monitoring', color: 'hsl(150 68% 51%)' },
-                { range: `31–${restrictThreshold - 1}`, action: 'MFA step-up required', color: 'hsl(38 95% 55%)' },
+                { range: `31–${restrictThreshold - 1}`, action: 'Review / step-up planned', color: 'hsl(38 95% 55%)' },
                 { range: `${restrictThreshold}–85`, action: 'Restrict · incident review', color: 'hsl(20 95% 55%)' },
-                { range: '86–100', action: 'Auto-block + alert security team', color: 'hsl(350 100% 59%)' },
+                { range: '86–100', action: 'Human approval required for containment', color: 'hsl(350 100% 59%)' },
               ].map((level) => (
                 <div key={level.range} className="flex items-center gap-2">
                   <span className="w-14" style={{ color: level.color }}>{level.range}</span>
@@ -398,6 +508,7 @@ const AdminPanel = () => {
             <span className="text-sm font-medium">Detection Engine</span>
           </div>
 
+          <p className="mb-3 text-[10px] text-warning">Model selection is a UI demo only. Isolation Forest is the implemented detector; LSTM is planned and is not active.</p>
           <div className="space-y-3">
             {[
               {
@@ -410,7 +521,7 @@ const AdminPanel = () => {
                 id: 'lstm' as const,
                 name: 'LSTM Autoencoder',
                 desc: 'Deep learning sequence analysis. Best for temporal behavioral patterns.',
-                badge: 'AVAILABLE',
+                badge: 'PLANNED',
               },
             ].map((model) => (
               <button

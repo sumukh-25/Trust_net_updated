@@ -90,7 +90,7 @@ export interface RegisteredDevice {
   fingerprint_hash: string;
   first_seen: string;
   last_seen: string;
-  trust_status: 'trusted' | 'unknown' | 'flagged';
+  trust_status: 'trusted' | 'unknown' | 'flagged' | 'revoked';
   label: string;
   quarantined: boolean;
 }
@@ -101,8 +101,18 @@ export interface DashboardSummary {
   active_incident_count: number;
   network_anomalies: number;
   device_counts: { total: number; trusted: number; unknown: number; flagged: number };
-  recent_incidents: Array<Record<string, any>>;
+  recent_incidents: BackendIncident[];
   data_scope: string;
+  // Authoritative contract aliases (same values as the fields above)
+  systemRisk?: number;
+  avgUserRisk?: number;
+  openIncidents?: number;
+  anomalies?: number;
+  trustedDevices?: number;
+  devicesToReview?: number;
+  networkAnomalies?: number;
+  mlStatus?: 'available' | 'initializing' | string;
+  dataSource?: string;
 }
 
 export interface RiskPolicyThreshold {
@@ -150,9 +160,142 @@ export interface BackendIncident {
   evidence: string[];
   response_action: string | null;
   risk_breakdown: Record<string, any>;
+  incident_label?: string | null;
+  incident_number?: number | null;
+}
+
+export interface AgentRuleResult {
+  rule_id: string;
+  name: string;
+  fired: boolean;
+  weight: number;
+  detail: string;
+  evidence: string[];
+}
+
+export interface AgentAttackType {
+  type: 'stolen_credentials' | 'brute_force' | 'data_exfiltration' | 'after_hours_insider' | 'unknown';
+  confidence: number;
+  recommended_action: string;
+  method: 'deterministic_evidence_rules';
+  evidence_summary: { failed_logins: number; successful_logins: number; sensitive_events: number; fired_rules: string[] };
+}
+
+export interface AgentInvestigation {
+  verdict: 'likely_malicious' | 'suspicious' | 'inconclusive';
+  confidence: number;
+  attack_type?: AgentAttackType;
+  fired_rules: string[];
+  rules: AgentRuleResult[];
+  investigated_at: string;
+  read_only: boolean;
+}
+
+export interface AgentSafeguard {
+  name: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface AgentResponseAction {
+  id: string;
+  incident_id: string;
+  action: string;
+  target: string | null;
+  mode: string;
+  status: 'proposed' | 'pending_approval' | 'executing' | 'executed' | 'rejected' | 'blocked' | 'failed' | 'expired';
+  rationale: string;
+  safeguards: AgentSafeguard[];
+  decided_by: string | null;
+  executed_at: string | null;
+  expires_at?: string | null;
+}
+
+export interface AccountRestriction {
+  id: string;
+  user_id: string;
+  status: 'active' | 'expired' | 'released';
+  incident_id: string | null;
+  created_by: string;
+  created_at: string;
+  expires_at: string;
+  released_by: string | null;
+}
+
+export interface AgentActivityEntry {
+  id: string;
+  incident_id: string | null;
+  agent: string;
+  action: string;
+  summary: string;
+  created_at: string;
+}
+
+export interface AgentNotification {
+  id: string;
+  recipient: string;
+  subject: string;
+  status: 'queued' | 'sent' | 'failed' | 'skipped';
+  error: string | null;
+}
+
+export interface AgentIncidentView {
+  incident_id: string;
+  investigation: AgentInvestigation | null;
+  responses: AgentResponseAction[];
+  feedback: Array<{ id: string; verdict: string; notes: string; analyst_id: string; created_at: string }>;
+  activity: AgentActivityEntry[];
+  notifications: AgentNotification[];
+}
+
+export interface AgentLearningResult {
+  labeled_incidents: number;
+  min_labels_required: number;
+  default_accuracy: number | null;
+  learned_accuracy: number | null;
+  accuracy_delta: number | null;
+  applied: boolean;
+  status: 'insufficient_data' | 'applied' | 'rejected';
+  note?: string;
+  active_weights: Record<string, number>;
+}
+
+export interface AgentAutonomySettings {
+  autonomy_mode: 'off' | 'recommend' | 'auto_contain';
+  kill_switch: boolean;
+  auto_max_per_hour: number;
+  auto_min_confidence: number;
+}
+
+export type WsState = 'live' | 'reconnecting' | 'offline';
+
+export interface RiskPolicy {
+  version: number;
+  weights: Record<string, number>;
+  sensitivity: number;
+  device_trust_enabled: boolean;
+  geo_enabled: boolean;
+  learning_rate: number;
+  restrict_threshold?: number;
+  ranges?: { sensitivity: [number, number]; learning_rate: [number, number]; max_weight_sum: number };
+}
+
+export interface VerdictScoreEffect {
+  incident_id: string;
+  user_id: string;
+  verdict: string;
+  score_before: number;
+  score_after: number;
+  user_adjustment: number;
+  policy_version: number;
+  mechanism: string;
 }
 
 class MLBackendService {
+  private wsState: WsState = 'offline';
+  private wsStateListeners: Array<(state: WsState, lastMessageAt: number | null) => void> = [];
+  private wsAttempts = 0;
+  private wsLastMessageAt: number | null = null;
   private baseUrl: string;
   private ws: WebSocket | null = null;
   private wsListeners: Array<(data: any) => void> = [];
@@ -163,11 +306,99 @@ class MLBackendService {
     this.baseUrl = ML_API_BASE_URL;
   }
 
-  private request(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  private refreshInFlight: Promise<string | null> | null = null;
+
+  /**
+   * Single-flight refresh. Concurrent 401s share one /auth/refresh call; the backend rotates the
+   * refresh cookie on every call and treats reuse of a consumed token as theft (revokes the family),
+   * so parallel refreshes would otherwise sign the user out.
+   */
+  private refreshAccessToken(): Promise<string | null> {
+    if (!this.refreshInFlight) {
+      this.refreshInFlight = (async () => {
+        try {
+          const refreshed = await fetch(`${this.baseUrl}/auth/refresh`, { method: "POST", credentials: "include" });
+          if (!refreshed.ok) return null;
+          const body = await refreshed.json();
+          return typeof body.access_token === "string" && body.access_token ? body.access_token : null;
+        } finally {
+          this.refreshInFlight = null;
+        }
+      })();
+    }
+    return this.refreshInFlight;
+  }
+
+  private restoreInFlight: Promise<boolean> | null = null;
+
+  /**
+   * Restore a signed-in session after a page reload using the HttpOnly refresh cookie.
+   * Memory-only: nothing is written to browser storage. Returns false when there is no valid cookie.
+   * Never throws and never retries, so it cannot loop.
+   */
+  restoreSession(): Promise<boolean> {
+    if (getAuthSession()?.token) return Promise.resolve(true);
+    if (!this.restoreInFlight) {
+      this.restoreInFlight = (async () => {
+        try {
+          const token = await this.refreshAccessToken();
+          if (!token) return false;
+          const me = await fetch(`${this.baseUrl}/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+            credentials: "include",
+          });
+          if (!me.ok) return false;
+          const body = await me.json();
+          if (!body?.user || !Array.isArray(body.permissions)) return false;
+          setAuthSession({ token, user: body.user, permissions: body.permissions });
+          return true;
+        } catch {
+          return false;
+        } finally {
+          this.restoreInFlight = null;
+        }
+      })();
+    }
+    return this.restoreInFlight;
+  }
+
+  private async request(input: RequestInfo | URL, init: RequestInit = {}, allowRefresh = true): Promise<Response> {
     const headers = new Headers(init.headers);
-    const token = getAuthSession()?.token;
+    const session = getAuthSession();
+    const token = session?.token;
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    return fetch(input, { ...init, headers });
+    // Required for the API's HttpOnly refresh cookie when the frontend and API use different local ports.
+    let response = await fetch(input, { ...init, headers, credentials: "include" });
+    const path = String(input);
+    if (response.status === 401 && allowRefresh && session && !path.includes("/auth/refresh") && !path.includes("/auth/login") && !path.includes("/auth/logout")) {
+      try {
+        const newToken = await this.refreshAccessToken();
+        if (newToken) {
+          setAuthSession({ ...(getAuthSession() ?? session), token: newToken });
+          const retryHeaders = new Headers(init.headers);
+          retryHeaders.set("Authorization", `Bearer ${newToken}`);
+          // Single retry only: the retried request is never refreshed again, so no loops.
+          response = await fetch(input, { ...init, headers: retryHeaders, credentials: "include" });
+        }
+      } catch {
+        // Preserve the original 401; callers decide whether to sign out or show an error.
+      }
+    }
+    if (response.status === 403 && typeof window !== "undefined" && !path.includes("/mfa/")) {
+      const body = await response.clone().json().catch(() => null);
+      if (body?.detail?.code === "MFA_REQUIRED") {
+        window.dispatchEvent(new CustomEvent("trustnet:mfa-required"));
+      }
+    }
+    return response;
+  }
+
+  requestMfaChallenge(): Promise<{ status: string; expires_in_seconds: number; delivery: string; demo_code?: string }> {
+    return this.agentJson('/mfa/challenge', { method: 'POST' });
+  }
+
+  verifyMfaCode(code: string): Promise<{ status: string; verified_at: string }> {
+    return this.agentJson('/mfa/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
   }
 
   // ── WebSocket for instant threat push ──
@@ -178,6 +409,7 @@ class MLBackendService {
     }
     const token = getAuthSession()?.token;
     if (!token || this.wsTicketPending) return;
+    if (this.wsAttempts > 0) this.setWsState('reconnecting');
     this.wsTicketPending = true;
     try {
       const ticketResponse = await this.request(`${this.baseUrl}/auth/ws-ticket`, { method: "POST" });
@@ -189,6 +421,7 @@ class MLBackendService {
       this.ws = new WebSocket(wsUrl);
     } catch (error) {
       console.warn("[WS] Could not authorize dashboard stream", error);
+      this.scheduleWsReconnect();
     } finally {
       this.wsTicketPending = false;
     }
@@ -197,6 +430,8 @@ class MLBackendService {
 
     this.ws.onopen = () => {
       console.log('[WS] Connected — dashboard will receive instant threat events');
+      this.wsAttempts = 0;
+      this.setWsState('live');
       // Keep alive ping every 30s
       const ping = setInterval(() => {
         if (this.ws?.readyState === WebSocket.OPEN) {
@@ -210,7 +445,8 @@ class MLBackendService {
     this.ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'pong') return; // heartbeat reply
+        this.wsLastMessageAt = Date.now();
+        if (data.type === 'pong') { this.notifyWsState(); return; } // heartbeat reply
         // Notify all listeners
         this.wsListeners.forEach(fn => fn(data));
       } catch { /* ignore parse errors */ }
@@ -219,9 +455,7 @@ class MLBackendService {
     this.ws.onclose = () => {
       console.log('[WS] Disconnected');
       this.ws = null;
-      if (getAuthSession()?.token) {
-        this.wsReconnectTimer = setTimeout(() => void this.connectWebSocket(), 3000);
-      }
+      this.scheduleWsReconnect();
     };
 
     this.ws.onerror = () => {
@@ -239,8 +473,57 @@ class MLBackendService {
 
   disconnectWebSocket(): void {
     if (this.wsReconnectTimer) clearTimeout(this.wsReconnectTimer);
+    this.wsAttempts = 0;
     this.ws?.close();
     this.ws = null;
+    this.setWsState('offline');
+  }
+
+  /** Exponential backoff (1s, 2s, 4s ... capped at 30s) with jitter; stays 'reconnecting' until the socket opens. */
+  private scheduleWsReconnect(): void {
+    this.ws = null;
+    if (!getAuthSession()?.token) { this.setWsState('offline'); return; }
+    this.wsAttempts += 1;
+    this.setWsState(this.wsAttempts >= 6 ? 'offline' : 'reconnecting');
+    const delay = Math.min(30000, 1000 * 2 ** (this.wsAttempts - 1)) + Math.random() * 250;
+    if (this.wsReconnectTimer) clearTimeout(this.wsReconnectTimer);
+    this.wsReconnectTimer = setTimeout(() => void this.connectWebSocket(), delay);
+  }
+
+  private setWsState(state: WsState): void {
+    this.wsState = state;
+    this.notifyWsState();
+  }
+
+  private notifyWsState(): void {
+    this.wsStateListeners.forEach((fn) => fn(this.wsState, this.wsLastMessageAt));
+  }
+
+  getWsState(): WsState { return this.wsState; }
+
+  onWsState(callback: (state: WsState, lastMessageAt: number | null) => void): () => void {
+    this.wsStateListeners.push(callback);
+    callback(this.wsState, this.wsLastMessageAt);
+    return () => { this.wsStateListeners = this.wsStateListeners.filter((fn) => fn !== callback); };
+  }
+
+  async getRiskPolicy(): Promise<RiskPolicy> {
+    const response = await this.request(`${this.baseUrl}/risk-policy`);
+    if (!response.ok) throw new Error(`Failed to fetch risk policy: ${response.status} ${response.statusText}`);
+    return response.json();
+  }
+
+  async updateRiskPolicy(update: Partial<Pick<RiskPolicy, 'weights' | 'sensitivity' | 'device_trust_enabled' | 'geo_enabled' | 'learning_rate'>>): Promise<RiskPolicy> {
+    const response = await this.request(`${this.baseUrl}/risk-policy`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(update),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(typeof detail?.detail === 'string' ? detail.detail : `Risk policy update failed: ${response.status}`);
+    }
+    return response.json();
   }
 
   /**
@@ -516,6 +799,81 @@ class MLBackendService {
       throw new Error(detail?.detail || `Incident action failed: ${response.status} ${response.statusText}`);
     }
     return await response.json();
+  }
+
+  private async agentJson<T>(path: string, init?: RequestInit): Promise<T> {
+    const response = await this.request(`${this.baseUrl}${path}`, init);
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null);
+      const message = typeof detail?.detail === 'string' ? detail.detail : (detail?.detail?.message || detail?.detail?.code || `Request failed: ${response.status} ${response.statusText}`);
+      throw new Error(message);
+    }
+    return await response.json();
+  }
+
+  getIncidentAgentView(incidentId: string): Promise<AgentIncidentView> {
+    return this.agentJson(`/incidents/${encodeURIComponent(incidentId)}/agent`);
+  }
+
+  reinvestigateIncident(incidentId: string): Promise<{ view: AgentIncidentView }> {
+    return this.agentJson(`/incidents/${encodeURIComponent(incidentId)}/investigate`, { method: 'POST' });
+  }
+
+  decideAgentResponse(incidentId: string, actionId: string, decision: "approve" | "reject"): Promise<unknown> {
+    return this.agentJson(`/incidents/${encodeURIComponent(incidentId)}/responses/${encodeURIComponent(actionId)}/${decision}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+  }
+
+  submitIncidentVerdict(incidentId: string, verdict: 'true_positive' | 'false_positive', notes = ''): Promise<{ learning: AgentLearningResult; duplicate?: boolean; score_effect?: VerdictScoreEffect | null }> {
+    return this.agentJson(`/incidents/${encodeURIComponent(incidentId)}/verdict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verdict, notes }),
+    });
+  }
+
+  getAgentLearning(): Promise<AgentLearningResult> {
+    return this.agentJson('/agents/learning');
+  }
+
+  verifyAuditChain(): Promise<{ valid: boolean; checked: number; broken_event_id?: string | null; reason?: string; untracked_event_count?: number; head_hash?: string }> {
+    return this.agentJson('/audit/verify');
+  }
+
+  replayDemoScenario(scenarioId: string): Promise<{ status: string; scenario_id: string; scenario_title: string; synthetic_only: boolean; risk: { score: number; level: string }; incident: BackendIncident | null; notice: string }> {
+    return this.agentJson(`/demo/scenarios/${encodeURIComponent(scenarioId)}/replay`, { method: 'POST' });
+  }
+
+  resetDemo(): Promise<{ status: string; message: string; preserved: string[] }> {
+    return this.agentJson('/demo/reset', { method: 'POST' });
+  }
+
+  getAgentActivity(limit = 20): Promise<{ activity: AgentActivityEntry[] }> {
+    return this.agentJson(`/agents/activity?limit=${limit}`);
+  }
+
+  getUnreadNotificationCount(): Promise<{ unread_count: number }> {
+    return this.agentJson('/notifications/unread-count');
+  }
+
+  markNotificationRead(notificationId?: string): Promise<{ marked_read: number; unread_count: number }> {
+    const path = notificationId ? `/notifications/${encodeURIComponent(notificationId)}/read` : '/notifications/read-all';
+    return this.agentJson(path, { method: 'POST' });
+  }
+
+  getAccountRestrictions(userId?: string): Promise<{ restrictions: AccountRestriction[] }> {
+    return this.agentJson(`/account-restrictions${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`);
+  }
+
+  releaseAccountRestriction(restrictionId: string): Promise<{ restriction: AccountRestriction }> {
+    return this.agentJson(`/account-restrictions/${encodeURIComponent(restrictionId)}/release`, { method: 'POST' });
+  }
+
+  getAgentAutonomy(): Promise<AgentAutonomySettings> {
+    return this.agentJson('/agents/autonomy');
   }
 
   async getDashboardSummary(): Promise<DashboardSummary> {

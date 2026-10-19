@@ -30,7 +30,7 @@ export default function LoginPage3D() {
   const depthRef = useRef<HTMLDivElement | null>(null);
   const copyRefs = useRef<Array<HTMLDivElement | null>>([]);
 
-  const [username, setUsername] = useState("sumukh");
+  const [username, setUsername] = useState(import.meta.env.DEV ? "sumukh" : "");
   const [password, setPassword] = useState("");
   const [authenticating, setAuthenticating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -425,7 +425,7 @@ export default function LoginPage3D() {
             {authenticating ? "VERIFYING DEVICE…" : "AUTHENTICATE & ENTER CONSOLE"}
           </button>
           <div className="tn-footnote">DEVICE FINGERPRINT · IN-MEMORY BASELINE</div>
-          <p className="tn-auth-error" style={{ margin: "12px 0 0", color: "var(--text-faint)" }}>Demo: sumukh / sumukh@123. First successful login sets the baseline.</p>
+          <p className="tn-auth-error" style={{ margin: "12px 0 0", color: "var(--text-faint)" }}>{import.meta.env.DEV ? "Local demo account: sumukh / sumukh@123 (development builds only). " : ""}First successful login sets the baseline.</p>
         </form>
       </section>
     </div>

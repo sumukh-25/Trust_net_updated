@@ -1,7 +1,7 @@
-import { motion } from "framer-motion";
+import { motion, type Variants } from "framer-motion";
 import type { ReactNode } from "react";
 
-const contentVariants = {
+const contentVariants: Variants = {
   initial: { opacity: 0, y: 24, filter: "blur(8px)" },
   animate: {
     opacity: 1,
@@ -17,7 +17,7 @@ const contentVariants = {
   },
 };
 
-const flashVariants = {
+const flashVariants: Variants = {
   initial: { scaleX: 0, opacity: 0.9 },
   animate: {
     scaleX: [0, 1, 1, 0],

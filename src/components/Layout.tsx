@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { useSecurity } from '@/store/securityStore';
 import { useAuth } from '@/store/authContext';
-import { mlBackendService } from '@/services/mlBackendService';
+import { mlBackendService, type WsState } from '@/services/mlBackendService';
+import NotificationBell from '@/components/NotificationBell';
 
 const navItems = [
   { to: '/overview', icon: LayoutDashboard, label: 'Overview', exact: true },
@@ -26,13 +27,21 @@ const getThreatColor = (score: number) => {
 };
 
 interface LayoutProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export const Layout = ({ children }: LayoutProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { systemRiskScore, activeAnomalies, isAttackSimulated, simulateAttack, resetSimulation, isSimulating } = useSecurity();
+  const [wsState, setWsState] = useState<WsState>(mlBackendService.getWsState());
+  const [lastMessageAt, setLastMessageAt] = useState<number | null>(null);
+  useEffect(() => mlBackendService.onWsState((state, at) => { setWsState(state); setLastMessageAt(at); }), []);
+  const wsBadge = {
+    live: { label: 'LIVE', color: 'hsl(142 70% 45%)' },
+    reconnecting: { label: 'RECONNECTING', color: 'hsl(38 95% 55%)' },
+    offline: { label: 'OFFLINE', color: 'hsl(350 100% 59%)' },
+  }[wsState];
   const location = useLocation();
   const navigate = useNavigate();
   const { user, hasPermission } = useAuth();
@@ -208,6 +217,7 @@ export const Layout = ({ children }: LayoutProps) => {
               <div className="text-xs font-medium text-foreground">{user?.email}</div>
               <div className="text-[9px] font-mono uppercase text-muted-foreground">{user?.role}</div>
             </div>
+            <NotificationBell />
             <button
               type="button"
               onClick={async () => { await mlBackendService.logout(); navigate('/login', { replace: true }); }}
@@ -226,12 +236,13 @@ export const Layout = ({ children }: LayoutProps) => {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Live indicator */}
+            {/* Live indicator: reflects the real WebSocket state (live / reconnecting with backoff / offline) */}
             <div className="flex items-center gap-1.5 px-2 py-1 rounded font-mono text-xs border"
-              style={{ background: 'hsl(142 70% 45% / 0.1)', borderColor: 'hsl(142 70% 45% / 0.3)', color: 'hsl(142 70% 45%)' }}
+              title={lastMessageAt ? `Last message ${new Date(lastMessageAt).toLocaleTimeString()}` : 'No live message received yet'}
+              style={{ background: `${wsBadge.color.replace(')', ' / 0.1)')}`, borderColor: `${wsBadge.color.replace(')', ' / 0.3)')}`, color: wsBadge.color }}
             >
-              <div className="w-1.5 h-1.5 rounded-full bg-success animate-threat-pulse" />
-              LIVE
+              <div className={`w-1.5 h-1.5 rounded-full ${wsState === 'live' ? 'animate-threat-pulse' : ''}`} style={{ background: wsBadge.color }} />
+              {wsBadge.label}
             </div>
 
             {/* SIMULATE ATTACK BUTTON */}
