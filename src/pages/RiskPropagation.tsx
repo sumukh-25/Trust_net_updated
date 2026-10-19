@@ -116,7 +116,7 @@ const RiskPropagation = () => {
                   borderColor: 'hsl(350 100% 59% / 0.3)',
                 }}
               >
-                <div className="text-[9px] font-mono text-muted-foreground mb-1">{node.type.toUpperCase()}</div>
+                <div className="text-[9px] font-mono text-muted-foreground mb-1">{String(node.type || 'UNKNOWN').toUpperCase()}</div>
                 <div className="text-sm font-medium text-destructive">{node.label}</div>
                 <div className="mt-2">
                   <div className="text-[10px] font-mono text-muted-foreground mb-1">Propagation Risk</div>
@@ -125,11 +125,11 @@ const RiskPropagation = () => {
                       <motion.div
                         className="h-full rounded-full bg-destructive"
                         initial={{ width: 0 }}
-                        animate={{ width: `${node.propagationRisk}%` }}
+                        animate={{ width: `${node.propagationRisk ?? 0}%` }}
                         transition={{ duration: 0.8 }}
                       />
                     </div>
-                    <span className="text-[10px] font-mono text-destructive">{node.propagationRisk}%</span>
+                    <span className="text-[10px] font-mono text-destructive">{node.propagationRisk ?? 0}%</span>
                   </div>
                 </div>
               </div>

@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useState } from 'react';
 import { useSecurity } from '@/store/securityStore';
 import { NetworkNode, NetworkEdge } from '@/data/mockData';
 
@@ -9,7 +8,12 @@ const NODE_ICONS: Record<string, string> = {
   device: '💻',
   database: '🗄️',
   server: '🖥️',
+  service: '⚙️',
+  asset: '🛡️',
+  network: '🔀',
 };
+
+const DEFAULT_NODE_ICON = '📦';
 
 const NODE_COLORS: Record<string, { fill: string; stroke: string }> = {
   user: { fill: 'hsl(350 100% 59% / 0.15)', stroke: 'hsl(350 100% 59%)' },
@@ -17,6 +21,14 @@ const NODE_COLORS: Record<string, { fill: string; stroke: string }> = {
   device: { fill: 'hsl(38 95% 55% / 0.15)', stroke: 'hsl(38 95% 55%)' },
   database: { fill: 'hsl(142 70% 45% / 0.15)', stroke: 'hsl(142 70% 45%)' },
   server: { fill: 'hsl(20 95% 55% / 0.15)', stroke: 'hsl(20 95% 55%)' },
+  service: { fill: 'hsl(180 80% 50% / 0.15)', stroke: 'hsl(180 80% 50%)' },
+  asset: { fill: 'hsl(210 80% 60% / 0.15)', stroke: 'hsl(210 80% 60%)' },
+  network: { fill: 'hsl(280 80% 60% / 0.15)', stroke: 'hsl(280 80% 60%)' },
+};
+
+const DEFAULT_NODE_COLOR: { fill: string; stroke: string } = {
+  fill: 'hsl(215 20% 50% / 0.15)',
+  stroke: 'hsl(215 20% 65%)',
 };
 
 const COMPROMISED: { fill: string; stroke: string } = {
@@ -80,7 +92,15 @@ export const NetworkGraph = ({ width = 800, height = 500, graphNodes, graphEdges
         {edges.map((edge, i) => {
           const from = getNodeById(edge.from);
           const to = getNodeById(edge.to);
-          if (!from || !to) return null;
+          if (
+            !from || !to ||
+            typeof from.x !== 'number' || typeof from.y !== 'number' ||
+            typeof to.x !== 'number' || typeof to.y !== 'number' ||
+            Number.isNaN(from.x) || Number.isNaN(from.y) ||
+            Number.isNaN(to.x) || Number.isNaN(to.y)
+          ) {
+            return null;
+          }
 
           return (
             <g key={i}>
@@ -124,14 +144,24 @@ export const NetworkGraph = ({ width = 800, height = 500, graphNodes, graphEdges
 
         {/* Nodes */}
         {nodes.map((node) => {
-          const colors = node.compromised ? COMPROMISED : NODE_COLORS[node.type];
+          const normalizedType = String(node.type || '').toLowerCase();
+          const typeColors = NODE_COLORS[normalizedType] ?? DEFAULT_NODE_COLOR;
+          const colors = node.compromised ? COMPROMISED : typeColors;
           const isHovered = hoveredNode === node.id;
           const r = 28;
+
+          const propagationRisk = typeof node.propagationRisk === 'number' && !Number.isNaN(node.propagationRisk)
+            ? Math.max(0, Math.min(100, node.propagationRisk))
+            : 0;
+          const nodeX = typeof node.x === 'number' && !Number.isNaN(node.x) ? node.x : 0;
+          const nodeY = typeof node.y === 'number' && !Number.isNaN(node.y) ? node.y : 0;
+          const nodeIcon = NODE_ICONS[normalizedType] ?? DEFAULT_NODE_ICON;
+          const nodeLabel = node.label || node.id || 'Node';
 
           return (
             <g
               key={node.id}
-              transform={`translate(${node.x}, ${node.y})`}
+              transform={`translate(${nodeX}, ${nodeY})`}
               className="cursor-pointer"
               onMouseEnter={() => setHoveredNode(node.id)}
               onMouseLeave={() => setHoveredNode(null)}
@@ -178,7 +208,7 @@ export const NetworkGraph = ({ width = 800, height = 500, graphNodes, graphEdges
               {/* Propagation risk arc */}
               {(() => {
                 const rArc = r + 4;
-                const angle = (node.propagationRisk / 100) * 360;
+                const angle = (propagationRisk / 100) * 360;
                 const rad = ((angle - 90) * Math.PI) / 180;
                 const x = rArc * Math.cos(rad);
                 const y = rArc * Math.sin(rad);
@@ -197,7 +227,7 @@ export const NetworkGraph = ({ width = 800, height = 500, graphNodes, graphEdges
 
               {/* Icon */}
               <text textAnchor="middle" dominantBaseline="middle" fontSize="16">
-                {NODE_ICONS[node.type]}
+                {nodeIcon}
               </text>
 
               {/* Label */}
@@ -209,7 +239,7 @@ export const NetworkGraph = ({ width = 800, height = 500, graphNodes, graphEdges
                 fill={node.compromised ? 'hsl(350 100% 59%)' : 'hsl(210 40% 70%)'}
                 fontWeight={node.compromised ? 'bold' : 'normal'}
               >
-                {node.label}
+                {nodeLabel}
               </text>
 
               {/* Risk % badge */}
@@ -224,7 +254,7 @@ export const NetworkGraph = ({ width = 800, height = 500, graphNodes, graphEdges
                     fill="hsl(222 35% 5%)"
                     fontWeight="bold"
                   >
-                    {node.propagationRisk}%
+                    {propagationRisk}%
                   </text>
                 </g>
               )}
@@ -240,6 +270,7 @@ export const NetworkGraph = ({ width = 800, height = 500, graphNodes, graphEdges
             { color: 'hsl(38 95% 55%)', label: 'Device' },
             { color: 'hsl(142 70% 45%)', label: 'Database' },
             { color: 'hsl(20 95% 55%)', label: 'Server' },
+            { color: 'hsl(180 80% 50%)', label: 'Service' },
             { color: 'hsl(350 100% 59%)', label: 'Compromised' },
           ].map((item, i) => (
             <g key={i} transform={`translate(0, ${i * 18})`}>
@@ -256,27 +287,27 @@ export const NetworkGraph = ({ width = 800, height = 500, graphNodes, graphEdges
       {activeInspectorNode && (
         <div className="absolute right-3 top-3 p-3 rounded-lg border border-border/80 bg-background/90 backdrop-blur-md shadow-xl min-w-[200px] max-w-[240px] text-xs font-mono space-y-1.5 pointer-events-auto transition-all animate-in fade-in">
           <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-1.5">
-            <span className="font-bold text-foreground truncate">{activeInspectorNode.label}</span>
+            <span className="font-bold text-foreground truncate">{activeInspectorNode.label || activeInspectorNode.id}</span>
             <span className={`badge ${activeInspectorNode.compromised ? 'badge-critical' : 'badge-ok'} text-[9px]`}>
               {activeInspectorNode.compromised ? 'COMPROMISED' : 'NOMINAL'}
             </span>
           </div>
           <div className="flex justify-between text-[11px]">
             <span className="text-muted-foreground">Entity Type:</span>
-            <span className="capitalize text-foreground font-semibold">{activeInspectorNode.type}</span>
+            <span className="capitalize text-foreground font-semibold">{activeInspectorNode.type || 'Unknown'}</span>
           </div>
           <div className="flex justify-between text-[11px]">
             <span className="text-muted-foreground">Propagation Risk:</span>
-            <span className={activeInspectorNode.propagationRisk > 60 ? 'text-destructive font-bold' : 'text-foreground'}>
-              {activeInspectorNode.propagationRisk}%
+            <span className={(activeInspectorNode.propagationRisk ?? 0) > 60 ? 'text-destructive font-bold' : 'text-foreground'}>
+              {activeInspectorNode.propagationRisk ?? 0}%
             </span>
           </div>
           <div className="w-full bg-secondary h-1.5 rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all"
               style={{
-                width: `${activeInspectorNode.propagationRisk}%`,
-                background: activeInspectorNode.propagationRisk > 60 ? 'hsl(350 100% 59%)' : activeInspectorNode.propagationRisk > 30 ? 'hsl(38 95% 55%)' : 'hsl(142 70% 45%)'
+                width: `${Math.min(100, Math.max(0, activeInspectorNode.propagationRisk ?? 0))}%`,
+                background: (activeInspectorNode.propagationRisk ?? 0) > 60 ? 'hsl(350 100% 59%)' : (activeInspectorNode.propagationRisk ?? 0) > 30 ? 'hsl(38 95% 55%)' : 'hsl(142 70% 45%)'
               }}
             />
           </div>

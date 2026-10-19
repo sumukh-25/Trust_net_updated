@@ -33,7 +33,7 @@ export interface Incident {
 export interface NetworkNode {
   id: string;
   label: string;
-  type: 'user' | 'app' | 'device' | 'database' | 'server';
+  type: 'user' | 'app' | 'device' | 'database' | 'server' | 'service' | string;
   x: number;
   y: number;
   compromised: boolean;
